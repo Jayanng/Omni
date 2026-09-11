@@ -1,0 +1,13 @@
+{
+  "_note": "Declared portfolio the governor monitors. rToken holdings are valued from live Bitget production prices and their fills are simulated, because Bitget's demo service does not support RWA order execution. Replace with your own holdings.",
+  "_units": "qty is in rToken units, avg_price is the entry price in USDT",
+  "rtoken_positions": [
+    {
+      "symbol": "RNVDAUSDT",
+      "code": "NVDA",
+      "qty": 500,
+      "avg_price": 219.4
+    }
+  ],
+  "futures_leg_note": "The crypto perpetual leg is read live from the Bitget demo account, not declared here."
+}

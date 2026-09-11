@@ -1,0 +1,10 @@
+# Omni has no third party Python dependencies.
+# It runs on the Python 3.11+ standard library only.
+#
+# The single external runtime dependency is the official Bitget Agent Hub CLI,
+# which Omni invokes for all private account access:
+#
+#   npm install -g @bitget-ai/bitget-agent-cli@3.0.0
+#
+# Alternatively set OMNI_BGC to a local launcher, or leave it unset and Omni
+# will fall back to: npx --yes @bitget-ai/bitget-agent-cli@3.0.0

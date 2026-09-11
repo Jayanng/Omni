@@ -1,0 +1,169 @@
+########################################################################
+# 0. dependency check (public data, demo account, agent hub, llm)
+########################################################################
+
+=== public data sources ===
+  [PASS] reality market states: ok
+  [PASS] reality stock info: 1 rows
+  [PASS] reality market calendar: ok
+  [PASS] reality dividends: ok
+  [PASS] rToken ticker: ok
+  [PASS] rToken candles: 3 rows
+  [PASS] rToken order book: ok
+
+=== demo account and execution ===
+  [PASS] account overview: assets returned
+  [PASS] order dry run
+
+=== session classifier ===
+  [PASS] regime=pre_market liquidity=thin mark_confidence=medium
+
+=== doctor summary: 13/13 checks passed ===
+
+########################################################################
+# 1. clean slate: close any open demo positions
+########################################################################
+no open demo positions
+
+########################################################################
+# 2. construct the demo book: a leveraged crypto perpetual leg
+########################################################################
+dry run: ok=True
+opened demo book: BTCUSDT long 2 -> ok=True
+  position: BTCUSDT long total=2 notional=154,072.60
+
+########################################################################
+# 3. RUN A: large declared rToken book, policy cap engages
+########################################################################
+
+=== 1. event intake: session and calendar ===
+  regime=pre_market liquidity=thin mark_confidence=medium weekend_tradable=True
+  underlying code=NVDA trading_periods=overnight,pre_market,regular,after_hours
+  corporate actions observed: 20
+
+=== 2. market data: rToken marks and depth ===
+  RNVDAUSDT: last=220.27
+  tradable stock perpetual marks: {'NVDAUSDT': 220.49, 'TSLAUSDT': 365.19, 'AAPLUSDT': 326.37, 'GOOGLUSDT': 334.67}
+
+=== 3. account state ===
+  effective equity=95,107.99 USDT, open futures positions=1
+  hedge instrument for RNVDAUSDT: NVDAUSDT
+    BTCUSDT long notional=153,983.20 asset_class=crypto shock=-25.0%
+
+=== 4. rToken collateral stress and margin model ===
+  modelled rToken gross        : 110,135.00 USDT
+  haircut applied              : 15.0%
+  effective collateral         : 93,614.75 USDT
+  scenario rToken / crypto     : -8.0% / -25.0%
+  shocked buffer               : 142,160.33 USDT
+  breach                       : False
+  Scenario consumes 24.4% of account equity, above the 10% risk budget. Shocked margin ratio 0.40%. The buffer cannot be driven to zero by the rToken leg alone under this crypto shock; the modelled shortfall originates in the futures leg. Neutralising hedge on the mapped stock perpetual: 110,135.00 USDT short.
+  simulated rToken exit (labelled simulated): RNVDAUSDT 500 @ 202.57 slippage 805.0 bps, fee 50.64 USDT
+
+=== 5. agent decision (LLM is the decision maker) ===
+  model=deepseek-ai/DeepSeek-V4.1-Flash fallback=False latency=4953ms
+  action=HEDGE_STOCK_PERP params={"symbol": "NVDAUSDT", "notional_usdt": 110135.0}
+  rationale: RNVDA rToken collateral (110,135 USDT gross, 93,614.75 after 15% haircut) carries unhedged NVDA price exposure while the cash equity market is closed and liquidity is thin. The -8% rToken / -25% crypto scenario models a 24.4% loss of equity, well above the 10% risk budget, with needs_attention flagg
+
+=== 6. policy layer (allowlist, caps, forced protection) ===
+  approved=True action=HEDGE_STOCK_PERP override=False
+  reason: proposal satisfies policy
+    check ok : action HEDGE_STOCK_PERP is allowlisted
+    check ok : hedge notional capped to policy maximum 5,000 USDT
+
+=== 7. execution: dry run then explicit order then readback ===
+  executed=True reason=short 22.68 NVDAUSDT to neutralise rToken collateral gap risk
+    step dry_run: ok=True endpoint=POST /api/v3/trade/place-order error=None
+    step execute: ok=True endpoint=POST /api/v3/trade/place-order error=None
+    readback: BTCUSDT long total=2 mark=76992.8
+    readback: NVDAUSDT short total=22.68 mark=220.82
+
+ledger: /home/ubuntu/omni/logs/paper-log-2026-09-11.jsonl
+
+########################################################################
+# 4. RUN B: right sized book, protective hedge fills in full
+########################################################################
+
+=== 1. event intake: session and calendar ===
+  regime=pre_market liquidity=thin mark_confidence=medium weekend_tradable=True
+  underlying code=NVDA trading_periods=overnight,pre_market,regular,after_hours
+  corporate actions observed: 20
+
+=== 2. market data: rToken marks and depth ===
+  RNVDAUSDT: last=220.27
+  tradable stock perpetual marks: {'NVDAUSDT': 220.49, 'TSLAUSDT': 365.19, 'AAPLUSDT': 326.37, 'GOOGLUSDT': 334.67}
+
+=== 3. account state ===
+  effective equity=95,057.39 USDT, open futures positions=2
+  hedge instrument for RNVDAUSDT: NVDAUSDT
+    BTCUSDT long notional=153,981.80 asset_class=crypto shock=-25.0%
+    NVDAUSDT short notional=5,008.42 asset_class=stock shock=-8.0%
+
+=== 4. rToken collateral stress and margin model ===
+  modelled rToken gross        : 4,845.94 USDT
+  haircut applied              : 15.0%
+  effective collateral         : 4,119.05 USDT
+  scenario rToken / crypto     : -8.0% / -25.0%
+  shocked buffer               : 60,036.48 USDT
+  breach                       : False
+  Scenario consumes 38.7% of account equity, above the 10% risk budget. Shocked margin ratio 1.18%. The buffer cannot be driven to zero by the rToken leg alone under this crypto shock; the modelled shortfall originates in the futures leg. Neutralising hedge on the mapped stock perpetual: 4,845.94 USDT short.
+  simulated rToken exit (labelled simulated): RNVDAUSDT 22 @ 202.57 slippage 805.7 bps, fee 2.23 USDT
+
+=== 5. agent decision (LLM is the decision maker) ===
+  model=deepseek-ai/DeepSeek-V4.1-Flash fallback=False latency=15796ms
+  action=HOLD params={}
+  rationale: The rToken gap is already neutralised: RNVDAUSDT collateral (4,845.94 USDT gross, 4,119.05 effective after 15% haircut) is offset almost 1:1 by the existing NVDAUSDT short of 5,008.42 USDT, leaving negligible net NVDA delta. Adding the recommended 4,845.94 short would double the hedge and introduce 
+
+=== 6. policy layer (allowlist, caps, forced protection) ===
+  approved=True action=HEDGE_STOCK_PERP override=True
+  reason: model chose HOLD while the modelled state requires action. Policy applied minimum protection: short 4,846 USDT of NVDAUSDT to neutralise gap risk
+    check ok : action HOLD is allowlisted
+
+=== 7. execution: dry run then explicit order then readback ===
+  executed=True reason=short 21.98 NVDAUSDT to neutralise rToken collateral gap risk
+    step dry_run: ok=True endpoint=POST /api/v3/trade/place-order error=None
+    step execute: ok=True endpoint=POST /api/v3/trade/place-order error=None
+    readback: BTCUSDT long total=2 mark=76988.5
+    readback: NVDAUSDT short total=44.66 mark=220.82
+
+ledger: /home/ubuntu/omni/logs/paper-log-2026-09-11.jsonl
+
+########################################################################
+# 5. flatten for hygiene
+########################################################################
+dry run close BTCUSDT: ok=True
+closed BTCUSDT: ok=True
+dry run close NVDAUSDT: ok=True
+closed NVDAUSDT: ok=True
+remaining positions: 0
+
+########################################################################
+# 6. paper metrics from the ledger
+########################################################################
+
+=== paper metrics ===
+{
+  "runs": 23,
+  "decisions": 12,
+  "executions_attempted": 12,
+  "executions_completed": 9,
+  "blocked_or_refused": 2,
+  "policy_overrides": 1,
+  "risk_violation_count": 1,
+  "risk_violation_rate": 0.0833,
+  "protective_action_share": 0.75,
+  "session_regimes_observed": [
+    "pre_market"
+  ],
+  "equity_observations": 11,
+  "max_drawdown_pct": 0.04525,
+  "sharpe": null,
+  "sharpe_note": "not reported: 11 equity observations, minimum 20 required for a meaningful estimate",
+  "notes": [
+    "risk_violation_rate is the share of execution attempts that policy had to override",
+    "a defensive governor holds most of the time, so low trade counts are expected"
+  ]
+}
+
+=== ledger files ===
+  paper-log-2026-09-11.jsonl (152468 bytes)

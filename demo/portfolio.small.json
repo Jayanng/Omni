@@ -1,0 +1,13 @@
+{
+  "_note": "Right sized variant of the declared portfolio. The recommended hedge for this book sits under the policy cap, so the protective order fills in full.",
+  "_units": "qty is in rToken units, avg_price is the entry price in USDT",
+  "rtoken_positions": [
+    {
+      "symbol": "RNVDAUSDT",
+      "code": "NVDA",
+      "qty": 22,
+      "avg_price": 219.4
+    }
+  ],
+  "futures_leg_note": "The crypto perpetual leg is read live from the Bitget demo account, not declared here."
+}
