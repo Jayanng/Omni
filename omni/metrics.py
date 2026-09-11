@@ -108,6 +108,11 @@ def compute(log_dir: Path) -> dict:
         if len(returns) >= 2 and statistics.pstdev(returns) > 0:
             sharpe = statistics.mean(returns) / statistics.pstdev(returns)
             sharpe_note = "computed on the recorded paper equity series, not annualised"
+        else:
+            sharpe_note = (
+                "not reported: enough observations, but the equity series is flat, "
+                "so Sharpe is undefined"
+            )
 
     sessions_regimes = sorted(
         {str(payload(e).get("regime")) for e in sessions if payload(e).get("regime")}

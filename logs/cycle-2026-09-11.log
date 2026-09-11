@@ -1,0 +1,90 @@
+=== omni daily cycle 2026-09-11 17:17:31 UTC ===
+
+=== public data sources ===
+  [PASS] reality market states: ok
+  [PASS] reality stock info: 1 rows
+  [PASS] reality market calendar: ok
+  [PASS] reality dividends: ok
+  [PASS] rToken ticker: ok
+  [PASS] rToken candles: 3 rows
+  [PASS] rToken order book: ok
+
+=== demo account and execution ===
+  [PASS] account overview: assets returned
+  [PASS] order dry run
+
+=== session classifier ===
+  [PASS] regime=regular liquidity=deep mark_confidence=high
+
+=== doctor summary: 13/13 checks passed ===
+
+
+=== 1. event intake: session and calendar ===
+  regime=regular liquidity=deep mark_confidence=high weekend_tradable=True
+  underlying code=NVDA trading_periods=overnight,pre_market,regular,after_hours
+  corporate actions observed: 20
+
+=== 2. market data: rToken marks and depth ===
+  RNVDAUSDT: last=219.17
+  tradable stock perpetual marks: {'NVDAUSDT': 219.36, 'TSLAUSDT': 365.94, 'AAPLUSDT': 334.37, 'GOOGLUSDT': 341.55}
+
+=== 3. account state ===
+  effective equity=94,550.06 USDT, open futures positions=0
+  hedge instrument for RNVDAUSDT: NVDAUSDT
+
+=== 4. rToken collateral stress and margin model ===
+  modelled rToken gross        : 4,821.74 USDT
+  haircut applied              : 15.0%
+  effective collateral         : 4,098.48 USDT
+  scenario rToken / crypto     : -8.0% / -25.0%
+  shocked buffer               : 98,320.66 USDT
+  breach                       : False
+  Scenario is survivable with buffer remaining. Shocked margin ratio 0.00%. The buffer cannot be driven to zero by the rToken leg alone under this crypto shock; the modelled shortfall originates in the futures leg. Neutralising hedge on the mapped stock perpetual: 4,821.74 USDT short.
+  simulated rToken exit (labelled simulated): RNVDAUSDT 22 @ 201.61 slippage 803.3 bps, fee 2.22 USDT
+
+=== 5. agent decision (LLM is the decision maker) ===
+  model=deepseek-ai/DeepSeek-V4.1-Flash fallback=False latency=5010ms
+  action=HOLD params={}
+  rationale: No crypto perpetual positions exist, margin ratio is 0, buffer is ~98.6k USDT, and the modelled shock loss is only 0.33% of equity versus a 10% risk budget. The scenario reports no breach and no attention needed, so opening a stock-perp hedge would add unnecessary action rather than reduce current m
+
+=== 6. policy layer (allowlist, caps, forced protection) ===
+  approved=True action=HOLD override=False
+  reason: proposal satisfies policy
+    check ok : action HOLD is allowlisted
+
+=== 7. execution: dry run then explicit order then readback ===
+  executed=False reason=no market action required
+
+ledger: /home/ubuntu/omni/logs/paper-log-2026-09-11.jsonl
+
+no open demo positions
+
+
+=== paper metrics ===
+{
+  "runs": 24,
+  "decisions": 13,
+  "executions_attempted": 13,
+  "executions_completed": 9,
+  "blocked_or_refused": 2,
+  "policy_overrides": 1,
+  "risk_violation_count": 0,
+  "risk_violation_rate": 0.0,
+  "protective_action_share": 0.6923,
+  "session_regimes_observed": [
+    "pre_market",
+    "regular"
+  ],
+  "equity_observations": 12,
+  "max_drawdown_pct": 0.050346,
+  "sharpe": null,
+  "sharpe_note": "not reported: 12 equity observations, minimum 20 required for a meaningful estimate",
+  "notes": [
+    "risk_violation_count counts executed actions that policy had rejected, or that were not allowlisted; it should stay at zero",
+    "policy_overrides counts proposals the policy layer overrode or hardened, which is the risk control layer working as designed",
+    "a defensive governor holds most of the time, so low trade counts are expected"
+  ]
+}
+
+=== ledger files ===
+  paper-log-2026-09-11.jsonl (162500 bytes)
