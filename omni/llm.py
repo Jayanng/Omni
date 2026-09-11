@@ -117,7 +117,7 @@ def fallback_decision(risk_state: dict, reason: str) -> Decision:
             return Decision(
                 action="HEDGE_STOCK_PERP",
                 params={
-                    "symbol": "NVDAUSDT",
+                    "symbol": hedge.get("symbol") or "NVDAUSDT",
                     "notional_usdt": hedge["notional_usdt"],
                 },
                 rationale=(

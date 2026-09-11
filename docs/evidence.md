@@ -116,7 +116,7 @@ discovered. Nothing was deleted to make the run look cleaner.
 ## 7. Unit tests
 
 ```text
-Ran 28 tests - OK
+Ran 31 tests - OK
 ```
 
 Covers session classification (regular, pre-market, weekend tradable, weekend frozen, holiday),

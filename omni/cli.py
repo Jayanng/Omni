@@ -84,7 +84,8 @@ def cmd_doctor(args) -> int:
         ("demo credentials present", cfg.has_credentials,
          "BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE")
     )
-    checks.append(("agent hub cli resolved", bool(cfg.bgc or True), cfg.bgc or "npx pinned"))
+    bgc_detail = cfg.bgc or "npx pinned @bitget-ai/bitget-agent-cli@3.0.0"
+    checks.append(("agent hub cli resolved", True, bgc_detail))
     checks.append(("llm configured", cfg.has_llm, f"{cfg.llm_model} at {cfg.llm_base_url}"))
 
     _print("public data sources")
