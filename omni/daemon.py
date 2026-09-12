@@ -64,6 +64,31 @@ class OmniDaemon:
         print(f"\n[{self._now_iso()}] [DAEMON] Shutdown signal received. Stopping gracefully...")
         self._running = False
 
+    def _stock_perp_symbols(self) -> set:
+        """Symbols in the demo futures universe whose instrument type is stock.
+
+        Mirrors the CLI implementation: a stock perpetual takes the equity gap
+        shock, a crypto perpetual takes the crypto shock. Hardcoding two names
+        misclassifies every other stock perp and misprices the cross-asset book.
+        """
+        try:
+            result = self.client.call(
+                ["market", "--action", "instruments", "--category", "USDT-FUTURES"],
+                allow_failure=True,
+            )
+            rows = result.data
+            if isinstance(rows, dict):
+                rows = rows.get("list") or []
+            if not isinstance(rows, list):
+                return set()
+            return {
+                str(r.get("symbol", "")).upper()
+                for r in rows
+                if isinstance(r, dict) and r.get("symbolType") == "stock"
+            }
+        except Exception:  # noqa: BLE001
+            return set()
+
     def run_one_cycle(self) -> dict:
         self._iteration += 1
         now_str = self._now_iso()
@@ -128,6 +153,7 @@ class OmniDaemon:
         eff_equity = float(assets.get("effEquity") or 0.0)
         margin_ratio = float(assets.get("mgnRatio") or 0.0)
         raw_positions = self.client.positions()
+        stock_perps = self._stock_perp_symbols()
 
         print(f"  Account: Equity = {eff_equity:,.2f} USDT | Margin Ratio = {margin_ratio:.4f} | Open Positions = {len(raw_positions)}")
 
@@ -143,7 +169,7 @@ class OmniDaemon:
                     unrealised_pnl=float(p.get("unrealisedPnl") or 0.0),
                     mmr=float(p.get("mmr") or 0.0),
                     leverage=float(p.get("leverage") or 0.0),
-                    asset_class="stock" if "NVDA" in p["symbol"] or "AAPL" in p["symbol"] else "crypto",
+                    asset_class="stock" if p["symbol"].upper() in stock_perps else "crypto",
                 )
             )
 

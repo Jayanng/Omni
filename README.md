@@ -208,7 +208,7 @@ demo/
   portfolio.example.json large declared rToken book
   portfolio.small.json   right sized book
 tests/
-  test_engine.py         31 stdlib unit tests
+  test_engine.py         36 stdlib unit tests
 tools/
   review_scan.py         unused import, long line and tab scan
   llm_latency_probe.py   measures model latency and fallback rate in isolation

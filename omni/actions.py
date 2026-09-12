@@ -390,7 +390,7 @@ class WebDaemonManager:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self.interval: int = 60
-        self.execute: bool = True
+        self.execute: bool = False
         self.shock: float = -0.25
         self.cycles_completed: int = 0
         self.last_cycle_time: str = ""

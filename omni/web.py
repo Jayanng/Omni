@@ -1726,23 +1726,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 
 _STATUS_CACHE: dict = {
-    "ok": True,
-    "session": {
-        "regime": "weekend_tradable",
-        "liquidity_tier": "weekend_thin",
-        "mark_confidence": "low",
-        "weekend_tradable": True,
-        "trading_periods": ["regular", "pre_market", "after_hours", "weekend"],
-    },
-    "rtoken_price": "219.00",
-    "equity": "94532.24",
-    "mmr": "17.76",
-    "margin_ratio": 0.0001,
-    "positions": [
-        {"symbol": "BTCUSDT", "posSide": "long", "total": "0.05", "markPrice": "77326.3"},
-        {"symbol": "NVDAUSDT", "posSide": "short", "total": "45.59", "markPrice": "218.43"},
-    ],
-    "latest_rationale": "Account collateralised by tokenized NVDA. Protective short active on mapped NVDAUSDT perpetual within policy limits.",
+    "ok": False,
+    "booting": True,
+    "latest_rationale": "Status refresh worker starting; first live fetch in progress.",
     "cached_at": time.time(),
 }
 _STATUS_CACHE_LOCK = threading.Lock()
@@ -1785,9 +1771,9 @@ def _status_refresh_worker():
             payload = {
                 "ok": True,
                 "session": session.to_dict(),
-                "rtoken_price": tick.get("lastPrice") or "219.00",
-                "equity": assets.get("effEquity") or "94532.24",
-                "mmr": assets.get("mmr") or "17.76",
+                "rtoken_price": tick.get("lastPrice"),
+                "equity": assets.get("effEquity"),
+                "mmr": assets.get("mmr"),
                 "margin_ratio": float(assets.get("mgnRatio") or 0.0),
                 "positions": pos if isinstance(pos, list) else [],
                 "latest_rationale": latest_rationale or "Autonomous Governor active.",
@@ -1818,6 +1804,13 @@ def update_status_positions(positions: list) -> None:
     with _STATUS_CACHE_LOCK:
         _STATUS_CACHE["positions"] = positions
         _STATUS_CACHE["cached_at"] = time.time()
+
+
+def invalidate_status_cache() -> None:
+    """Clear the cached status so the next request triggers a fresh fetch."""
+    global _STATUS_CACHE
+    with _STATUS_CACHE_LOCK:
+        _STATUS_CACHE = {}
 
 
 class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
@@ -1886,7 +1879,7 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == "/api/cycle":
             rtoken_shock = float(params.get("rtoken_shock", -0.25))
-            execute_flag = bool(params.get("execute", True))
+            execute_flag = bool(params.get("execute", False))
 
             try:
                 d_cfg = DaemonConfig(
@@ -1939,7 +1932,7 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
             action = params.get("action", "status")
             if action == "start":
                 interval = int(params.get("interval", 30))
-                execute = bool(params.get("execute", True))
+                execute = bool(params.get("execute", False))
                 shock = float(params.get("shock", -0.25))
                 res = GLOBAL_DAEMON.start(interval=interval, execute=execute, shock=shock)
             elif action == "stop":
@@ -1985,7 +1978,7 @@ def serve_ui(port: int = PORT):
     print(f"       Open: http://localhost:{port}                         ")
     print("===============================================================")
     start_status_refresher()
-    server = ThreadingHTTPServer(("", port), OmniHttpHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), OmniHttpHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
