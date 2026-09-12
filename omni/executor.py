@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 
 from .bitget_demo import DemoClient
 from .config import stock_perp_for
+from .venue_risk import effective_order_cap, query_instrument_caps, query_max_open
 
 # The demo exchange enforces a per-order contract cap that is not published in
 # the instrument metadata (maxOrderQty reports a much larger number). When the
@@ -141,6 +142,33 @@ def execute(action: str, params: dict, client: DemoClient, marks: dict,
                 reason="computed hedge quantity rounds to zero",
             )
 
+        # Pre-clamp to the venue's own size answers so limits are queried, not
+        # discovered by rejection: instrument caps (per-order maximums) and
+        # max-open-available (venue-computed additional size including tiers
+        # and margin). Falls back to the requested size when reads fail.
+        caps = query_instrument_caps(client, hedge_symbol)
+        cap = effective_order_cap(caps)
+        max_open = query_max_open(client, hedge_symbol, "sell")
+        venue_max_sell = max_open.get("maxSellOpen", 0.0)
+        clamp_note = ""
+        pre_clamp = qty
+        if cap > 0 and qty > cap:
+            clamp_note = f"clamped to instrument cap: {qty:g} -> {cap:g} {hedge_symbol} (instruments maxOrderQty/maxMarketOrderQty)"
+            qty = cap
+        if venue_max_sell > 0 and qty > venue_max_sell:
+            clamp_note = (clamp_note + "; " if clamp_note else "") + (
+                f"clamped to venue max-open: {qty:g} -> {venue_max_sell:g} {hedge_symbol} (max-open-available)"
+            )
+            qty = venue_max_sell
+        qty = math.floor(qty * 100) / 100.0
+        if qty != pre_clamp:
+            steps.append(ExecutionStep(
+                name="venue_pre_clamp",
+                argv=f"venue pre-clamp {hedge_symbol}",
+                ok=True,
+                payload={"note": clamp_note},
+            ))
+
         preview = client.place_order(
             category="USDT-FUTURES", symbol=hedge_symbol, side="sell", order_type="market",
             qty=str(qty), pos_side="short", reduce_only="no", dry_run=True,
@@ -158,11 +186,10 @@ def execute(action: str, params: dict, client: DemoClient, marks: dict,
         )
         steps.append(_step_from_result("execute", sent))
 
-        # The demo exchange enforces size limits that are not published in the
-        # instrument metadata (per-order contract caps and position tier caps).
-        # When a size rejection comes back, halve the size and retry, so the
+        # The demo exchange additionally enforces position-tier caps not
+        # visible in the instrument metadata. When a size rejection still
+        # comes back after the pre-clamp, halve the size and retry, so the
         # agent still delivers the largest protective order the venue accepts.
-        clamp_note = ""
         attempt = 0
         while (not sent.ok) and attempt < 3 and _is_size_rejection(sent):
             stated = _quantity_cap(sent)

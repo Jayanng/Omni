@@ -26,6 +26,14 @@ from .bitget_demo import DemoClient, DemoCliError
 from .collateral import RTokenPosition
 from .config import ROOT, load_config, stock_perp_for
 from .ledger import Ledger
+from .venue_risk import (
+    effective_order_cap,
+    next_tier_above,
+    query_haircut,
+    query_instrument_caps,
+    query_max_open,
+    query_mmr_tiers,
+)
 
 DEFAULT_PORTFOLIO = ROOT / "demo" / "portfolio.example.json"
 from .policy import PolicyConfig, validate
@@ -185,18 +193,63 @@ class OmniDaemon:
         ]
         hedge_symbol = stock_perp_for(self.d_cfg.rtoken)
 
+        # 4a. Venue-published parameters: haircut from the discount-rate
+        # schedule, per-symbol MMR tiers, and instrument caps. Each replaces a
+        # modelled value with the exchange's own number, and each records its
+        # source. On a failed venue read we keep the explicit input and say so.
+        haircut_pct = self.d_cfg.haircut
+        haircut_source = self.d_cfg.haircut_source or "explicit --haircut input"
+        rtoken_holding_value = sum(
+            r["qty"] * marks.get(r["symbol"], r.get("avg_price") or 0.0)
+            for r in portfolio_data.get("rtoken_positions", [])
+        )
+        quote = query_haircut(self.client, self.d_cfg.rtoken, rtoken_holding_value)
+        if quote is not None:
+            haircut_pct = quote.haircut_pct
+            haircut_source = quote.source
+
+        mmr_tiers = query_mmr_tiers(self.client, hedge_symbol)
+        instrument_caps = query_instrument_caps(self.client, hedge_symbol)
+        max_open = query_max_open(self.client, hedge_symbol, "sell")
+        post_hedge_band = next_tier_above(mmr_tiers, sum(
+            abs(f.total) * f.mark_price for f in futures if f.symbol == hedge_symbol
+        ))
+
         risk = evaluate(
             as_of=datetime.now(timezone.utc),
             observed_effective_equity=eff_equity,
             rtoken_positions=rtoken_positions,
             rtoken_marks=marks,
             futures_positions=futures,
-            haircut_pct=self.d_cfg.haircut,
+            haircut_pct=haircut_pct,
             rtoken_shock_pct=self.d_cfg.rtoken_shock,
             crypto_shock_pct=self.d_cfg.crypto_shock,
             hedge_symbol=hedge_symbol,
         )
         rd = risk.to_dict()
+        rd["modelled"]["haircut_source"] = haircut_source
+        rd["modelled"]["haircut_input"] = self.d_cfg.haircut
+        if mmr_tiers:
+            rd["modelled"]["mmr_tiers_source"] = (
+                f"venue /api/v3/market/position-tier symbol={hedge_symbol} bands={len(mmr_tiers)}"
+            )
+            if post_hedge_band is not None:
+                rd["modelled"]["post_hedge_tier"] = {
+                    "tier": post_hedge_band.tier,
+                    "min_usdt": post_hedge_band.min_usdt,
+                    "mmr": post_hedge_band.mmr,
+                    "max_leverage": post_hedge_band.max_leverage,
+                }
+        if instrument_caps:
+            cap = effective_order_cap(instrument_caps)
+            if cap > 0:
+                rd["modelled"]["venue_order_cap_qty"] = cap
+                rd["modelled"]["venue_order_cap_source"] = (
+                    f"venue instruments symbol={hedge_symbol} maxMarketOrderQty/maxOrderQty"
+                )
+        if max_open:
+            rd["modelled"]["venue_max_sell_open"] = max_open.get("maxSellOpen")
+            rd["modelled"]["venue_max_open_source"] = max_open.get("source")
 
         print(f"  Risk Model: Shocked Buffer = {rd['results']['shocked_buffer_usdt']:,.2f} USDT | Breach = {rd['results']['breach']} | Needs Attention = {rd['results']['needs_attention']}")
 
@@ -242,6 +295,17 @@ class OmniDaemon:
                 "shocked_buffer": rd["results"]["shocked_buffer_usdt"],
                 "needs_attention": rd["results"]["needs_attention"],
                 "breach": rd["results"]["breach"],
+                "modelled": {
+                    "haircut_pct": rd["modelled"].get("haircut_pct"),
+                    "haircut_source": rd["modelled"].get("haircut_source"),
+                    "haircut_input": rd["modelled"].get("haircut_input"),
+                    "mmr_tiers_source": rd["modelled"].get("mmr_tiers_source"),
+                    "post_hedge_tier": rd["modelled"].get("post_hedge_tier"),
+                    "venue_order_cap_qty": rd["modelled"].get("venue_order_cap_qty"),
+                    "venue_order_cap_source": rd["modelled"].get("venue_order_cap_source"),
+                    "venue_max_sell_open": rd["modelled"].get("venue_max_sell_open"),
+                    "venue_max_open_source": rd["modelled"].get("venue_max_open_source"),
+                },
             },
             "decision": decision.to_dict(),
             "policy": policy.to_dict(),

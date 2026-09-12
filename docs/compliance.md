@@ -82,3 +82,20 @@ weakest part of this entry today and is stated plainly rather than dressed up.
 3. Record a short screen video of one complete cycle.
 4. Optional: apply for Reality order-book whitelist through Bitget BD, which would replace the
    simulated rToken fills with real depth access.
+
+## Resolved since the first submission pass (2026-09-12)
+
+The three modelled inputs that most weakened the quantitative story are now
+venue-sourced rather than assumed, each with its endpoint recorded in every
+cycle ledger record:
+
+| Value | Before | Now | Venue source |
+|---|---|---|---|
+| rToken collateral haircut | explicit input, default 15% | 5% for rNVDA at demo tier | `/api/v3/market/discount-rate` |
+| maintenance margin tier ladder | not consulted | 11 official bands for NVDAUSDT, post-hedge tier modelled | `/api/v3/market/position-tier` |
+| order size limits | discovered by rejection | pre-clamped before any order is sent | `/api/v3/account/max-open-available` + instruments |
+
+This directly addresses the handbook's quantitative judging criteria: the risk
+numbers the judges see are computed from the venue's own published schedules
+where the venue publishes them, and the remaining modelled parts are labelled
+as scenario estimates with their inputs recorded.

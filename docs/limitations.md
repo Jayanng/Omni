@@ -14,20 +14,38 @@ margin_ratio = maintenance / total_equity
 buffer       = total_equity - maintenance
 ```
 
-It then applies user-supplied scenario shocks. It does **not** reproduce Bitget's official
-liquidation engine, does not know the venue's account-specific collateral schedule, and does not
-model funding, fees inside the shock, or partial liquidation mechanics.
+**Partially resolved (2026-09-12):** the maintenance-margin inputs are now
+venue-sourced. `/api/v3/market/position-tier` returns the official per-symbol
+tier ladder (notional band -> MMR and leverage cap), recorded in every cycle
+ledger record as `mmr_tiers_source`, and the cycle records which tier a new
+hedge would graduate into (`post_hedge_tier`). The per-position `mmr` the
+account API reports is used as-is. The model still does **not** reproduce
+Bitget's full liquidation engine, its account-specific collateral schedule
+beyond the published discount-rate ladder, or funding, fees inside the shock,
+or partial liquidation mechanics.
 
-Consequence: every "buffer", "liquidation shock" and "time to breach" style number is conditional
-on the stated inputs. The model withholds the liquidation-shock figure entirely when the rToken
-leg alone cannot plausibly drive the buffer to zero.
+Consequence: every "buffer", "liquidation shock" and "time to breach" style
+number is conditional on the stated inputs. The model withholds the
+liquidation-shock figure entirely when the rToken leg alone cannot plausibly
+drive the buffer to zero.
 
 ## 2. The rToken collateral ratio is an input, not an observation
 
-Bitget does not publish an account-specific rToken collateral ratio through the Agent Hub
-surface. Omni therefore requires the ratio as an explicit parameter (`--haircut`, default 15%)
-and prints its source in the run output and the ledger. A different ratio produces different
-results, and that is the intended behaviour: the assumption is visible and adjustable.
+**Resolved (2026-09-12).** Bitget publishes per-coin, per-tier collateral
+ratios at `/api/v3/market/discount-rate` (the agent CLI exposes it as
+`market --action discountRate`). The cycle now queries it live for the
+portfolio's rToken coin, selects the tier by the holding's USD value, and uses
+the venue's haircut instead of the previous explicit default. For rNVDA at the
+demo holding (~109K USDT) the venue discount rate is 0.95, i.e. a **5%
+haircut**, where the previous default input was 15%. The value and its source
+are recorded in every cycle record (`haircut_pct`, `haircut_source`), and the
+explicit `--haircut` flag remains as a fallback and override, with the ledger
+recording which was used. The engine no longer guesses this number.
+
+Remaining nuance: the discount-rate ladder is the venue's published schedule
+for margin counting; an account-specific custom-collateral configuration could
+differ, and the demo `coinConfigList` is empty, so per-account confirmation is
+still not observable in demo scope.
 
 ## 3. rToken fills are simulated, and labelled
 
@@ -64,12 +82,19 @@ mistake a demo balance sheet for a real one.
   produced an executed protective action, not as a trade hit rate.
 - Max drawdown is computed from the recorded paper equity series only.
 
-## 7. Venue size limits are discovered, not documented
+## 7. Venue size limits are queried, not discovered by rejection
 
-The demo exchange enforces per-order and position-tier caps that are not published in the
-instrument metadata (`maxOrderQty` reports a much larger number than the venue accepts). The
-executor adapts by reducing size and retrying, and it logs every attempt. This makes the agent
-resilient but it does mean an order may execute smaller than the recommendation.
+**Resolved (2026-09-12).** Before any hedge order is sized, the executor now
+queries three venue answers and pre-clamps to the smallest: the instrument
+metadata (`maxOrderQty` / `maxMarketOrderQty` via
+`market --action instruments`), and the venue-computed maximum additional open
+size for the account and side (`/api/v3/account/max-open-available`, exposed as
+`order --action maxOpen`), which already folds in position tiers, margin
+availability and existing positions. A clamp is recorded as an explicit
+`venue_pre_clamp` execution step. The halve-and-retry path remains as a
+defence in depth for limits the venue does not surface, so an order may still
+execute smaller than the recommendation in those rare cases, but the known
+limits are now queried upfront.
 
 ## 8. Not claimed
 
