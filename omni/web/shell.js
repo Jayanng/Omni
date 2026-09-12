@@ -1,5 +1,4 @@
-/* omni console shell: shared design system, sidebar nav, client routing.
-   No build step. Pages register themselves on window.__OMNI_PAGES. */
+/* omni console shell: Denar-style header nav, client routing, shared state */
 window.__OMNI_PAGES = {};
 
 const OMNI = (() => {
@@ -10,10 +9,7 @@ const OMNI = (() => {
 
   const state = { status: null, ledger: [], daemon: null, timers: [] };
 
-  async function api(path, opts) {
-    const r = await fetch(path, opts);
-    return r.json();
-  }
+  async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
   async function refreshStatus() { try { state.status = await api("/api/status"); } catch (e) {} }
   async function refreshLedger() { try { const d = await api("/api/ledger"); state.ledger = d.records || []; } catch (e) {} }
   async function refreshDaemon() { try { state.daemon = await api("/api/action/daemon"); } catch (e) {} }
@@ -66,7 +62,6 @@ const OMNI = (() => {
     }
   }
 
-  // next Monday 09:30 New York, computed live
   function countdownToCashOpen() {
     const ny = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
     const target = new Date(ny);
@@ -79,28 +74,28 @@ const OMNI = (() => {
   }
 
   const PAGES = [
-    ["/", "overview"], ["/risk", "risk model"], ["/decisions", "decisions"],
-    ["/positions", "positions"], ["/ledger", "audit ledger"], ["/controls", "controls"],
+    ["/", "overview"], ["/risk", "risk model"], ["/positions", "positions"],
+    ["/ledger", "audit ledger"], ["/controls", "controls"],
   ];
   function layout(activeRoute, innerHtml) {
-    const nav = PAGES.map(([route, label]) =>
-      `<a class="nav-item${route === activeRoute ? " active" : ""}" href="#${route}">${label}</a>`).join("");
+    const nav = PAGES.map(([route, label]) => {
+      const active = route === activeRoute;
+      return `<a class="${active ? "active" : ""}" href="#${route}">${active ? '<span class="dot"></span>' : ""}${label}</a>`;
+    }).join("");
     return `
-      <aside class="sidenav">
-        <div class="snav-brand">omni<span>.</span></div>
-        <div class="snav-sub">cross-asset risk governor</div>
-        <nav>${nav}</nav>
-        <div class="snav-foot" id="snavFoot"></div>
-      </aside>
-      <div class="page">
-        <header class="topbar">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <div class="logo">omni<span>.</span></div>
+          <div class="sub">cross-asset risk governor</div>
+        </div>
+        <nav class="topbar-nav">${nav}</nav>
+        <div class="topbar-right">
           <span class="badge" id="daemonBadge">daemon: \u2014</span>
           <span class="badge" id="regimeBadge">session: \u2014</span>
-          <span class="hspace"></span>
           <span class="mono topclock" id="utcClock">\u2014</span>
-        </header>
-        <main class="content">${innerHtml}</main>
-      </div>`;
+        </div>
+      </header>
+      <div class="main"><div class="content">${innerHtml}</div></div>`;
   }
 
   function mountGlobal() {
@@ -111,22 +106,15 @@ const OMNI = (() => {
       db.className = "badge" + (state.daemon.running ? " ok" : "");
     }
     const s = (state.status && state.status.session) || {};
-    if (rb && s.regime) { rb.textContent = "session: " + s.regime; rb.className = "badge " + (s.regime === "regular" ? "ok" : "warn"); }
-    const foot = $("snavFoot");
-    if (foot && state.status) {
-      foot.innerHTML = `<div class="foot-row"><span>equity</span><span class="num">${fmt(state.status.equity, 0)}</span></div>
-        <div class="foot-row"><span>cached</span><span class="num">${state.status.cached_at ? new Date(state.status.cached_at * 1000).toISOString().slice(11, 19) : "\u2014"}</span></div>`;
-    }
+    if (rb && s.regime) { rb.textContent = "session: " + s.regime; rb.className = "badge " + (s.regime === "regular" ? "ok" : "pink"); }
   }
 
-  let currentRoute = null;
   function route() {
     const hash = location.hash.replace(/^#/, "") || "/";
     const page = window.__OMNI_PAGES[hash] || window.__OMNI_PAGES["/"];
     if (!page) return;
     state.timers.forEach(clearInterval); state.timers = [];
     document.getElementById("app").innerHTML = layout(hash, page.render());
-    currentRoute = hash;
     if (page.mount) page.mount();
     mountGlobal();
   }
@@ -137,7 +125,7 @@ const OMNI = (() => {
     refreshStatus(); refreshLedger(); refreshDaemon();
     state.timers.push(setInterval(async () => { await refreshStatus(); await refreshDaemon(); mountGlobal(); }, 12000));
     state.timers.push(setInterval(async () => { await refreshLedger(); mountGlobal(); }, 15000));
-    state.timers.push(setInterval(mountGlobal, 1000)); // clock tick
+    state.timers.push(setInterval(mountGlobal, 1000));
   }
 
   return { $, fmt, esc, api, state, latestRisk, latestDecision, equitySeries, summarize, countdownToCashOpen, start, refreshStatus, refreshLedger, refreshDaemon };

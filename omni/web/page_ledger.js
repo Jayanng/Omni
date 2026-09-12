@@ -1,14 +1,16 @@
-/* ledger page: full audit trail */
+/* audit ledger page: full immutable record stream */
 window.__OMNI_PAGES["/ledger"] = {
   render() {
     return `
-      <section class="card" style="flex:1;display:flex;flex-direction:column;min-height:0">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h2 style="margin:0">audit ledger \u00b7 immutable jsonl</h2>
+      <div class="section-label">AUDIT TRAIL</div>
+      <div class="section-title serif">Immutable ledger</div>
+      <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <h3 style="margin:0">JSONL RECORDS</h3>
           <span class="dec-meta" id="ledCount">\u2014</span>
         </div>
         <div style="overflow-y:auto;flex:1" id="ledBody"></div>
-      </section>`;
+      </div>`;
   },
   mount() {
     const { $, state, esc, summarize } = OMNI;

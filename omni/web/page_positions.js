@@ -1,30 +1,41 @@
-/* positions page: open positions, account summary, daemon state */
+/* positions & decisions page: merged view */
 window.__OMNI_PAGES["/positions"] = {
   render() {
     return `
-      <section class="grid3">
-        <div class="card metric"><div class="k">effective equity</div><div class="v num" id="pEquity">\u2014</div><div class="s">USDT</div></div>
-        <div class="card metric"><div class="k">maintenance margin</div><div class="v num" id="pMmr">\u2014</div><div class="s">USDT</div></div>
-        <div class="card metric"><div class="k">margin ratio</div><div class="v num" id="pRatio">\u2014</div><div class="s">maintenance / equity</div></div>
-      </section>
-      <section class="card">
-        <h2>open positions \u00b7 demo account</h2>
+      <div class="section-label">YOUR ACCOUNT</div>
+      <div class="section-title serif">Positions & decisions</div>
+      <div class="grid3">
+        <div class="stat-card"><div class="label">EFFECTIVE EQUITY</div><div class="value num" id="pEquity">\u2014</div><div class="sub">USDT</div></div>
+        <div class="stat-card"><div class="label">MAINTENANCE MARGIN</div><div class="value num" id="pMmr">\u2014</div><div class="sub">USDT</div></div>
+        <div class="stat-card"><div class="label">MARGIN RATIO</div><div class="value num" id="pRatio">\u2014</div><div class="sub">maintenance / equity</div></div>
+      </div>
+      <div class="card">
+        <h2>Open positions \u00b7 demo account</h2>
         <table>
           <thead><tr><th>symbol</th><th>side</th><th class="r">total</th><th class="r">available</th><th class="r">mark price</th><th class="r">unrealised pnl</th><th class="r">leverage</th></tr></thead>
           <tbody id="posBody"></tbody>
         </table>
-      </section>
-      <section class="card">
-        <h2>daemon</h2>
-        <div class="row"><span class="k">state</span><span class="v" id="dState">\u2014</span></div>
-        <div class="row"><span class="k">cycles completed</span><span class="v num" id="dCycles">\u2014</span></div>
-        <div class="row"><span class="k">interval</span><span class="v num" id="dInterval">\u2014</span></div>
-        <div class="row"><span class="k">execute enabled</span><span class="v" id="dExec">\u2014</span></div>
-        <div class="row"><span class="k">last cycle</span><span class="v mono" id="dLast">\u2014</span></div>
-      </section>`;
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <h2>Decision history</h2>
+          <table>
+            <thead><tr><th>time</th><th>action</th><th>model</th><th class="r">latency</th><th>policy</th></tr></thead>
+            <tbody id="decBody"></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h2>Daemon</h2>
+          <div class="row"><span class="k">state</span><span class="v" id="dState">\u2014</span></div>
+          <div class="row"><span class="k">cycles completed</span><span class="v num" id="dCycles">\u2014</span></div>
+          <div class="row"><span class="k">interval</span><span class="v num" id="dInterval">\u2014</span></div>
+          <div class="row"><span class="k">execute enabled</span><span class="v" id="dExec">\u2014</span></div>
+          <div class="row"><span class="k">last cycle</span><span class="v mono" id="dLast">\u2014</span></div>
+        </div>
+      </div>`;
   },
   mount() {
-    const { $, fmt, state } = OMNI;
+    const { $, fmt, state, esc } = OMNI;
     function renderData() {
       const st = state.status || {};
       $("pEquity").textContent = st.equity == null ? "\u2014" : fmt(st.equity, 0);
@@ -47,6 +58,28 @@ window.__OMNI_PAGES["/positions"] = {
           <td class="r num">${p.leverage || "\u2014"}</td>`;
         body.appendChild(tr);
       });
+
+      const decs = state.ledger.filter(r => {
+        const p = r.payload || {};
+        return (r.kind === "decision" && p.decision) || (r.kind === "daemon_cycle" && p.decision);
+      }).reverse();
+      const decBody = $("decBody"); decBody.innerHTML = "";
+      if (decs.length === 0) {
+        decBody.innerHTML = `<tr><td colspan="5" class="empty">no decisions recorded yet</td></tr>`;
+      }
+      decs.slice(0, 20).forEach(rec => {
+        const p = rec.payload || {};
+        const d = p.decision || {}, pol = p.policy || {};
+        const tr = document.createElement("tr");
+        const ts = String(rec.ts || "").replace("T", " ").slice(5, 19);
+        tr.innerHTML = `<td class="mono" style="color:var(--faint)">${ts}</td>
+          <td class="mono">${esc(d.action || "\u2014")}${d.used_fallback ? ' <span style="color:#C4787C;font-size:10px">FB</span>' : ""}</td>
+          <td class="mono" style="color:var(--muted);font-size:11px">${esc((d.model || "\u2014").split("/").pop())}</td>
+          <td class="r num">${d.latency_ms || "\u2014"}ms</td>
+          <td>${pol.action ? `<b style="color:${pol.approved ? "var(--forest)" : "#C4787C"};font-weight:500">${pol.approved ? "approved" : "rejected"}</b>` : "\u2014"}</td>`;
+        decBody.appendChild(tr);
+      });
+
       const d = state.daemon || {};
       $("dState").textContent = d.running ? "running" : "idle";
       $("dState").className = "v " + (d.running ? "ok" : "dim");

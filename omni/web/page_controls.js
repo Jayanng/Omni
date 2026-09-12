@@ -1,58 +1,60 @@
-/* controls page: run cycle, daemon, setup, flatten, doctor, policy facts */
+/* controls page: governance cycle, daemon, book, doctor, policy facts */
 window.__OMNI_PAGES["/controls"] = {
   render() {
     return `
-      <section class="grid2">
+      <div class="section-label">GOVERNANCE</div>
+      <div class="section-title serif">Controls</div>
+      <div class="grid2">
         <div class="card">
-          <h2>governance cycle</h2>
-          <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
+          <h2>Governance cycle</h2>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6">
             Runs one full observe \u2192 model \u2192 decide \u2192 policy \u2192 execute cycle against the live demo account.
             Dry run by default; check the box to send paper orders.
           </p>
-          <div class="shock-picker" style="margin-bottom:10px">
+          <div class="shock-picker" style="margin-bottom:12px">
             <button class="shock-btn" data-shock="-0.04">-4%</button>
             <button class="shock-btn active" data-shock="-0.08">-8%</button>
             <button class="shock-btn" data-shock="-0.15">-15%</button>
             <button class="shock-btn" data-shock="-0.25">-25%</button>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:var(--muted)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;color:var(--muted)">
             <input type="checkbox" id="execFlag"><label for="execFlag">execute paper orders</label>
           </div>
-          <div id="execWarn" style="font-size:11px;color:var(--risk);margin-bottom:10px;display:none">orders will be sent to the demo account</div>
+          <div id="execWarn" style="font-size:12px;color:#C4787C;margin-bottom:12px;display:none">orders will be sent to the demo account</div>
           <button class="primary" id="btnCycle" style="width:100%">run governance cycle</button>
-          <div id="cycleOut" style="margin-top:14px;display:none">
-            <div class="dec-action mono" id="cAction"></div>
+          <div id="cycleOut" style="margin-top:16px;display:none">
+            <div class="dec-action serif" id="cAction"></div>
             <div class="dec-meta" id="cMeta"></div>
             <div class="rationale" id="cRationale"></div>
             <div class="policy-line" id="cPolicy"></div>
           </div>
         </div>
         <div class="card">
-          <h2>daemon</h2>
+          <h2>Daemon</h2>
           <div class="row"><span class="k">state</span><span class="v" id="cDState">\u2014</span></div>
           <div class="row"><span class="k">cycles completed</span><span class="v num" id="cDCycles">\u2014</span></div>
           <div class="row"><span class="k">interval</span><span class="v num" id="cDInterval">\u2014</span></div>
-          <button id="btnDaemon" style="width:100%;margin-top:12px">start daemon</button>
-          <h2 style="margin-top:20px">book management</h2>
-          <div style="display:flex;gap:8px;margin-bottom:8px">
-            <input id="setupSymbol" placeholder="symbol" value="BTCUSDT" style="flex:1;background:var(--panel2);border:1px solid var(--rule);color:var(--ink);padding:8px 10px;font-family:inherit;font-size:12px">
-            <input id="setupQty" placeholder="qty" value="2" style="width:70px;background:var(--panel2);border:1px solid var(--rule);color:var(--ink);padding:8px 10px;font-family:inherit;font-size:12px">
+          <button class="sage" id="btnDaemon" style="width:100%;margin-top:16px">start daemon</button>
+          <h2 style="margin-top:24px">Book management</h2>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input id="setupSymbol" placeholder="symbol" value="BTCUSDT" style="flex:1">
+            <input id="setupQty" placeholder="qty" value="2" style="width:80px">
           </div>
           <div style="display:flex;gap:8px">
-            <button id="btnSetup" style="flex:1">setup book</button>
+            <button class="sage" id="btnSetup" style="flex:1">setup book</button>
             <button class="danger" id="btnFlatten" style="flex:1">flatten all</button>
           </div>
-          <h2 style="margin-top:20px">health</h2>
-          <button id="btnDoctor" style="width:100%">run doctor</button>
+          <h2 style="margin-top:24px">Health</h2>
+          <button class="sage" id="btnDoctor" style="width:100%">run doctor</button>
         </div>
-      </section>
-      <section class="card">
-        <h2>policy facts \u00b7 from config</h2>
+      </div>
+      <div class="card">
+        <h2>Policy facts \u00b7 from config</h2>
         <div class="grid3" id="policyFacts"></div>
-      </section>
+      </div>
       <div class="modal-bg" id="doctorBg">
         <div class="modal">
-          <h3>doctor <button class="close" id="docClose" style="float:right;width:auto;padding:4px 10px;font-size:11px">close</button></h3>
+          <h3>Doctor <button class="close" id="docClose" style="float:right;width:auto;padding:6px 12px;font-size:12px">close</button></h3>
           <div class="dec-meta" id="docPending">running checks\u2026</div>
           <div id="docBody"></div>
         </div>
@@ -78,7 +80,6 @@ window.__OMNI_PAGES["/controls"] = {
     renderDaemon();
     OMNI.state.timers.push(setInterval(renderDaemon, 5000));
 
-    // policy facts from live config endpoint
     api("/api/config").then(cfg => {
       const el = $("policyFacts");
       if (!cfg || !cfg.ok) { el.innerHTML = `<div class="empty">config unavailable</div>`; return; }
@@ -101,7 +102,7 @@ window.__OMNI_PAGES["/controls"] = {
         if (d.ok) {
           const res = d.result || {}, dec = res.decision || {}, pol = res.policy || {}, ex = res.execution || {};
           $("cAction").textContent = dec.action || "\u2014";
-          $("cAction").className = "dec-action mono " + (dec.used_fallback ? "" : "ok");
+          $("cAction").className = "dec-action serif " + (dec.used_fallback ? "" : "ok");
           $("cMeta").textContent = (dec.model || "\u2014") + " \u00b7 " + (dec.latency_ms || "\u2014") + "ms" + (dec.used_fallback ? " \u00b7 fallback" : "");
           $("cRationale").textContent = dec.rationale || "";
           $("cPolicy").innerHTML = `policy: <b>${pol.approved ? "approved" : "rejected"}</b> \u2192 ${pol.action || "\u2014"}${pol.override ? " \u00b7 override" : ""}`;
@@ -139,7 +140,7 @@ window.__OMNI_PAGES["/controls"] = {
         body.appendChild(div);
       });
       const sum = document.createElement("div");
-      sum.style.cssText = "margin-top:10px;font-size:12px;color:" + (d.ok ? "var(--safe)" : "var(--risk)");
+      sum.style.cssText = "margin-top:12px;font-size:13px;color:" + (d.ok ? "var(--forest)" : "#C4787C");
       sum.textContent = (d.passed || 0) + "/" + (d.total || 0) + " checks passed";
       body.appendChild(sum);
     });

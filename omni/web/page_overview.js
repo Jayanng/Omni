@@ -1,8 +1,16 @@
-/* overview page: two clocks, equity strip, session, latest decision summary */
+/* overview page: Denar-style editorial layout */
 window.__OMNI_PAGES["/"] = {
   render() {
     return `
-      <section class="clocks">
+      <div class="section-label">PROTOCOL OVERVIEW</div>
+      <div class="section-title serif">Risk governor</div>
+      <div class="grid4">
+        <div class="stat-card"><div class="label">EFFECTIVE EQUITY</div><div class="value num" id="mEquity">\u2014</div><div class="sub">observed, demo account</div></div>
+        <div class="stat-card"><div class="label">MARGIN RATIO</div><div class="value num" id="mRatio">\u2014</div><div class="sub">maintenance / equity</div></div>
+        <div class="stat-card"><div class="label">MAINTENANCE MARGIN</div><div class="value num" id="mMmr">\u2014</div><div class="sub">USDT</div></div>
+        <div class="stat-card"><div class="label">POSITIONS</div><div class="value num" id="mPos">\u2014</div><div class="sub">open</div></div>
+      </div>
+      <div class="clocks">
         <div class="clock live">
           <div class="who">crypto \u00b7 24/7</div>
           <div class="read num" id="cryptoClock">--:--:--</div>
@@ -17,20 +25,15 @@ window.__OMNI_PAGES["/"] = {
             <div class="v num" id="countdown">\u2014</div>
           </div>
         </div>
-      </section>
-      <section class="grid3">
-        <div class="card metric"><div class="k">effective equity</div><div class="v num" id="mEquity">\u2014</div><div class="s">observed, demo account</div></div>
-        <div class="card metric"><div class="k">margin ratio</div><div class="v num" id="mRatio">\u2014</div><div class="s">maintenance / equity</div></div>
-        <div class="card metric"><div class="k">maintenance margin</div><div class="v num" id="mMmr">\u2014</div><div class="s">USDT</div></div>
-      </section>
-      <section class="card">
-        <h2>equity history \u00b7 real observations</h2>
+      </div>
+      <div class="card">
+        <h3>EQUITY HISTORY \u00b7 REAL OBSERVATIONS</h3>
         <div id="sparkWrap"><svg id="sparkSvg"></svg></div>
         <div class="spark-note" id="sparkNote">\u2014</div>
-      </section>
-      <section class="grid2">
+      </div>
+      <div class="grid2">
         <div class="card">
-          <h2>session</h2>
+          <h2>Session</h2>
           <div class="row"><span class="k">regime</span><span class="v mono" id="sRegime">\u2014</span></div>
           <div class="row"><span class="k">liquidity</span><span class="v mono" id="sLiq">\u2014</span></div>
           <div class="row"><span class="k">mark confidence</span><span class="v mono" id="sConf">\u2014</span></div>
@@ -38,13 +41,13 @@ window.__OMNI_PAGES["/"] = {
           <div class="row"><span class="k">weekend tradable</span><span class="v mono" id="sWeekend">\u2014</span></div>
         </div>
         <div class="card">
-          <h2>latest decision</h2>
-          <div class="dec-action mono" id="dAction">\u2014</div>
+          <h2>Latest decision</h2>
+          <div class="dec-action serif" id="dAction">\u2014</div>
           <div class="dec-meta" id="dMeta">no decision recorded yet</div>
           <div class="rationale" id="dRationale" style="display:none"></div>
           <div class="policy-line" id="dPolicy"></div>
         </div>
-      </section>`;
+      </div>`;
   },
   mount() {
     const { $, fmt, state, countdownToCashOpen, equitySeries, latestDecision } = OMNI;
@@ -69,25 +72,26 @@ window.__OMNI_PAGES["/"] = {
       $("mMmr").textContent = st.mmr == null ? "\u2014" : fmt(st.mmr);
       const ratio = st.margin_ratio;
       $("mRatio").textContent = ratio == null ? "\u2014" : (ratio * 100).toFixed(4) + "%";
+      $("mPos").textContent = (st.positions || []).length;
       $("sRegime").textContent = s.regime || "\u2014";
       $("sLiq").textContent = s.liquidity_tier || "\u2014";
       $("sConf").textContent = s.mark_confidence || "\u2014";
       $("sCash").textContent = s.cash_market_open == null ? "\u2014" : (s.cash_market_open ? "open" : "closed");
-      $("sCash").className = "v mono " + (s.cash_market_open ? "ok" : "warn");
+      $("sCash").className = "v mono " + (s.cash_market_open ? "ok" : "pink");
       $("sWeekend").textContent = s.weekend_tradable == null ? "\u2014" : (s.weekend_tradable ? "yes" : "no");
 
       const pts = equitySeries();
       const svg = $("sparkSvg");
       if (pts.length < 2) { svg.innerHTML = ""; $("sparkNote").textContent = "collecting equity observations (" + pts.length + ")"; }
       else {
-        const W = 600, H = 56, pad = 3, vals = pts.map(p => p.eq);
+        const W = 600, H = 64, pad = 4, vals = pts.map(p => p.eq);
         const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
         const xs = pts.map((_, i) => pad + i * (W - 2 * pad) / (pts.length - 1));
         const ys = vals.map(v => H - pad - (v - min) * (H - 2 * pad) / span);
         const d = xs.map((x, i) => (i ? "L" : "M") + x.toFixed(1) + "," + ys[i].toFixed(1)).join(" ");
         const mi = vals.indexOf(min);
         svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-        svg.innerHTML = `<path d="${d}" fill="none" stroke="#58A6FF" stroke-width="1.5"/><circle cx="${xs[mi].toFixed(1)}" cy="${ys[mi].toFixed(1)}" r="3" fill="#FFB020"/>`;
+        svg.innerHTML = `<path d="${d}" fill="none" stroke="#7BA05B" stroke-width="2"/><circle cx="${xs[mi].toFixed(1)}" cy="${ys[mi].toFixed(1)}" r="4" fill="#E8B4B8"/>`;
         $("sparkNote").textContent = pts.length + " real observations \u00b7 " + fmt(min, 0) + " \u2013 " + fmt(max, 0) + " USDT";
       }
 
@@ -95,7 +99,7 @@ window.__OMNI_PAGES["/"] = {
       if (ld) {
         const dec = ld.decision;
         $("dAction").textContent = dec.action;
-        $("dAction").className = "dec-action mono " + (dec.used_fallback ? "" : "ok");
+        $("dAction").className = "dec-action serif " + (dec.used_fallback ? "" : "ok");
         const lat = dec.latency_ms || 0;
         $("dMeta").textContent = (dec.model || "\u2014") + " \u00b7 " + (dec.latency_ms || "\u2014") + "ms" + (lat > 30000 ? " \u00b7 SLOW" : "") + (dec.used_fallback ? " \u00b7 fallback" : "");
         if (dec.rationale) { $("dRationale").style.display = "block"; $("dRationale").textContent = dec.rationale; }
