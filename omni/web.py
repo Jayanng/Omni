@@ -44,6 +44,15 @@ from .session import classify
 DEFAULT_PORTFOLIO = ROOT / "demo" / "portfolio.example.json"
 PORT = 8080
 
+# Console UI: operator's instrument, one viewport, no marketing.
+# Served at "/" from the package file. The original marketing-style
+# template stays available at /legacy for comparison.
+_COCKPIT_PATH = Path(__file__).resolve().parent / "cockpit.html"
+try:
+    COCKPIT_HTML = _COCKPIT_PATH.read_text(encoding="utf-8")
+except OSError:
+    COCKPIT_HTML = "<!DOCTYPE html><html><body><p>cockpit.html missing</p></body></html>"
+
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en" class="dark scroll-smooth">
 <head>
@@ -1824,7 +1833,18 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path in ("/", "/index.html"):
+        if parsed.path in ("/", "/index.html", "/cockpit"):
+            encoded = COCKPIT_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "close")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+            return
+
+        if parsed.path in ("/legacy", "/legacy.html"):
             encoded = HTML_TEMPLATE.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")

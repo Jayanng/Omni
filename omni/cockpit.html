@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>omni · cross-asset risk governor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#0A0D12; --panel:#0D1117; --panel2:#10161e;
+  --ink:#E6EDF3; --muted:#8B949E; --faint:#5c6773;
+  --risk:#FFB020; --safe:#3FB950; --info:#58A6FF;
+  --rule:rgba(230,237,243,.10); --rule2:rgba(230,237,243,.05);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--canvas); color:var(--ink);
+  font-family:"Inter",system-ui,-apple-system,sans-serif;
+  font-size:14px; overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+.mono,.num{font-family:"JetBrains Mono",ui-monospace,monospace}
+.num{font-variant-numeric:tabular-nums}
+
+#app{height:100vh;display:flex;flex-direction:column}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:center;gap:14px;
+  padding:0 20px;height:52px;flex:0 0 52px;
+  border-bottom:1px solid var(--rule);background:var(--panel);
+}
+.brand{font-size:19px;font-weight:600;letter-spacing:.02em}
+.brand span{color:var(--info)}
+.brand-sub{font-size:11px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+.hspace{flex:1}
+.badge{
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  padding:4px 10px;border:1px solid var(--rule);color:var(--muted);
+}
+.badge.ok{color:var(--safe);border-color:rgba(63,185,80,.35)}
+.badge.warn{color:var(--risk);border-color:rgba(255,176,32,.4)}
+.badge.info{color:var(--info);border-color:rgba(88,166,255,.35)}
+#utcClock{font-size:13px;color:var(--muted)}
+
+/* ---------- layout ---------- */
+.grid{flex:1;display:grid;grid-template-columns:300px 1fr;min-height:0}
+aside{border-right:1px solid var(--rule);overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+main{overflow-y:auto;padding:14px 20px;display:flex;flex-direction:column;gap:14px}
+
+/* ---------- cards ---------- */
+.card{border:1px solid var(--rule);background:var(--panel);padding:14px 16px}
+.card h2{
+  font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;
+  color:var(--faint);font-weight:500;margin-bottom:10px;
+}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;gap:10px}
+.row .k{font-size:11.5px;color:var(--muted)}
+.row .v{font-size:13px;font-weight:500}
+.v.ok{color:var(--safe)} .v.warn{color:var(--risk)} .v.info{color:var(--info)} .v.dim{color:var(--muted)}
+
+/* positions table */
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
+   text-align:left;padding:4px 6px;border-bottom:1px solid var(--rule);font-weight:500}
+td{font-size:12px;padding:5px 6px;border-bottom:1px solid var(--rule2)}
+td.r,th.r{text-align:right}
+.pos-side{font-size:10px;padding:1px 6px;border:1px solid var(--rule)}
+.pos-side.long{color:var(--safe);border-color:rgba(63,185,80,.35)}
+.pos-side.short{color:var(--risk);border-color:rgba(255,176,32,.4)}
+
+/* ---------- buttons ---------- */
+button{
+  font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;
+  background:var(--panel2);color:var(--ink);
+  border:1px solid var(--rule);padding:8px 12px;width:100%;
+  transition:border-color .15s,background .15s;
+}
+button:hover{border-color:rgba(88,166,255,.5);background:#131b25}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{border-color:rgba(88,166,255,.55);color:var(--info)}
+button.danger{border-color:rgba(255,176,32,.5);color:var(--risk)}
+.cmd-grid{display:flex;flex-direction:column;gap:8px}
+.cmd-sep{height:1px;background:var(--rule);margin:4px 0}
+.cmd-row{display:flex;gap:8px}
+.cmd-row button{flex:1}
+.exec-toggle{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)}
+.exec-toggle input{accent-color:var(--risk)}
+.exec-warn{font-size:10.5px;color:var(--risk);margin-top:6px;display:none}
+
+/* ---------- two clocks ---------- */
+.clocks{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.clock{border:1px solid var(--rule);background:var(--panel);padding:16px 18px;position:relative}
+.clock .who{font-size:12px;color:var(--muted);letter-spacing:.08em}
+.clock .read{font-size:44px;font-weight:500;line-height:1.1;margin:8px 0 4px}
+.clock .state{font-size:10.5px;letter-spacing:.2em;text-transform:uppercase}
+.clock.live .read{color:var(--info)} .clock.live .state{color:var(--safe)}
+.clock.frozen{border-color:rgba(255,176,32,.35)}
+.clock.frozen .read{color:var(--muted)} .clock.frozen .state{color:var(--risk)}
+.clock .reopens{position:absolute;top:16px;right:18px;text-align:right}
+.clock .reopens .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.clock .reopens .v{font-size:14px;color:var(--risk)}
+
+/* ---------- equity strip ---------- */
+.strip{border:1px solid var(--rule);background:var(--panel);padding:14px 18px;
+       display:grid;grid-template-columns:200px 1fr 200px;gap:18px;align-items:center}
+.metric .k{font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+.metric .v{font-size:26px;font-weight:600;margin-top:2px}
+.metric .s{font-size:11px;color:var(--muted);margin-top:2px}
+#sparkWrap{height:56px;position:relative}
+#sparkWrap svg{width:100%;height:100%;display:block}
+#sparkNote{font-size:10.5px;color:var(--faint);text-align:center;margin-top:4px}
+
+/* ---------- risk model ---------- */
+.risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.flow{display:flex;flex-direction:column;gap:8px}
+.flow-line{display:grid;grid-template-columns:1fr auto 110px;gap:10px;align-items:baseline;
+           padding:6px 0;border-bottom:1px solid var(--rule2)}
+.flow-line .k{font-size:12px;color:var(--muted)}
+.flow-line .arrow{color:var(--faint);font-size:11px}
+.flow-line .v{font-size:15px;font-weight:500;text-align:right}
+.verdict{margin-top:10px;padding:9px 12px;border:1px solid rgba(255,176,32,.4);
+         color:var(--risk);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+.verdict.ok{border-color:rgba(63,185,80,.4);color:var(--safe)}
+.shock-picker{display:flex;gap:8px;margin-top:10px}
+.shock-btn{width:auto;flex:1;padding:6px 0;font-size:12px}
+.shock-btn.active{border-color:var(--info);color:var(--info);background:#12202f}
+
+/* ---------- decision ---------- */
+.decision{border:1px solid var(--rule);background:var(--panel);padding:16px 18px}
+.dec-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.dec-action{font-size:20px;font-weight:600}
+.dec-action.ok{color:var(--safe)}
+.dec-meta{font-size:11px;color:var(--muted)}
+.rationale{font-size:13px;line-height:1.55;color:var(--ink);max-width:860px;
+           border-left:2px solid var(--rule);padding-left:14px}
+.policy-line{margin-top:10px;font-size:12px;color:var(--muted)}
+.policy-line b{color:var(--safe);font-weight:500}
+.order-line{margin-top:6px;font-size:12px}
+.order-line .oid{color:var(--faint)}
+.dec-pending{color:var(--muted);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
+
+/* ---------- ledger stream ---------- */
+.stream{flex:0 0 200px;border-top:1px solid var(--rule);background:var(--panel);
+        display:flex;flex-direction:column;min-height:0}
+.stream-head{display:flex;justify-content:space-between;align-items:center;
+             padding:8px 20px;border-bottom:1px solid var(--rule2)}
+.stream-head h2{font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;
+                color:var(--faint);font-weight:500}
+.stream-body{overflow-y:auto;flex:1;padding:6px 20px 18px;
+     -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 8px,#000 calc(100% - 14px),transparent 100%);
+     mask-image:linear-gradient(to bottom,transparent 0,#000 8px,#000 calc(100% - 14px),transparent 100%);}
+.entry{display:flex;gap:14px;padding:3px 0;font-size:11.5px;border-bottom:1px solid var(--rule2)}
+.entry .ts{color:var(--faint);flex:0 0 70px}
+.entry .kind{flex:0 0 110px;color:var(--muted)}
+.entry .txt{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.entry.dec .kind{color:var(--info)}
+.entry.exec .kind{color:var(--safe)}
+
+/* ---------- doctor modal ---------- */
+.modal-bg{position:fixed;inset:0;background:rgba(4,6,10,.8);display:none;
+          align-items:center;justify-content:center;z-index:50}
+.modal-bg.open{display:flex}
+.modal{width:min(680px,92vw);max-height:84vh;overflow-y:auto;background:var(--panel);
+       border:1px solid var(--rule);padding:20px 24px}
+.modal h3{font-size:14px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px}
+.modal .close{float:right;width:auto;padding:4px 10px;font-size:11px}
+.doc-row{display:flex;gap:10px;align-items:baseline;padding:4px 0;font-size:12px;
+         border-bottom:1px solid var(--rule2)}
+.doc-row .st{flex:0 0 52px;font-weight:600}
+.doc-row .st.p{color:var(--safe)} .doc-row .st.f{color:var(--risk)}
+.doc-row .nm{flex:1;color:var(--ink)}
+.doc-row .dt{color:var(--muted);font-size:11px}
+
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#1c2733;border-radius:0}
+::-webkit-scrollbar-track{background:transparent}
+
+@media(max-width:1100px){
+  .grid{grid-template-columns:260px 1fr}
+  .clock .read{font-size:34px}
+  .strip{grid-template-columns:160px 1fr 160px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">omni<span>.</span></div>
+    <div class="brand-sub">cross-asset risk governor</div>
+    <div class="hspace"></div>
+    <div class="badge" id="daemonBadge">daemon: idle</div>
+    <div class="badge" id="regimeBadge">session: —</div>
+    <div class="mono" id="utcClock">—</div>
+  </header>
+
+  <div class="grid">
+
+    <aside>
+      <section class="card">
+        <h2>session</h2>
+        <div class="row"><span class="k">regime</span><span class="v mono" id="sRegime">—</span></div>
+        <div class="row"><span class="k">liquidity</span><span class="v mono" id="sLiq">—</span></div>
+        <div class="row"><span class="k">mark confidence</span><span class="v mono" id="sConf">—</span></div>
+        <div class="row"><span class="k">cash market</span><span class="v mono" id="sCash">—</span></div>
+        <div class="row"><span class="k">weekend tradable</span><span class="v mono" id="sWeekend">—</span></div>
+      </section>
+
+      <section class="card">
+        <h2>account · demo</h2>
+        <div class="row"><span class="k">effective equity</span><span class="v num" id="aEquity">—</span></div>
+        <div class="row"><span class="k">maintenance margin</span><span class="v num" id="aMmr">—</span></div>
+        <div class="row"><span class="k">margin ratio</span><span class="v num" id="aRatio">—</span></div>
+        <table id="posTable">
+          <thead><tr><th>symbol</th><th>side</th><th class="r">total</th><th class="r">mark</th></tr></thead>
+          <tbody id="posBody"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>policy</h2>
+        <div class="row"><span class="k">hedge cap</span><span class="v num">5,000 USDT</span></div>
+        <div class="row"><span class="k">allowlist</span><span class="v dim">4 actions</span></div>
+        <div class="row"><span class="k">fund moves</span><span class="v warn">never</span></div>
+        <div class="row"><span class="k">dry run first</span><span class="v ok">always</span></div>
+      </section>
+
+      <section class="card commands">
+        <h2>governance</h2>
+        <div class="cmd-grid">
+          <button class="primary" id="btnCycle">run governance cycle</button>
+          <div class="shock-picker">
+            <button class="shock-btn" data-shock="-0.04">-4%</button>
+            <button class="shock-btn active" data-shock="-0.08">-8%</button>
+            <button class="shock-btn" data-shock="-0.25">-25%</button>
+          </div>
+          <div class="exec-toggle">
+            <input type="checkbox" id="execFlag">
+            <label for="execFlag">execute paper orders</label>
+          </div>
+          <div class="exec-warn" id="execWarn">orders will be sent to the demo account</div>
+          <div class="cmd-sep"></div>
+          <div class="cmd-row">
+            <button id="btnDaemon">start daemon</button>
+            <button id="btnDoctor">doctor</button>
+          </div>
+          <div class="cmd-sep"></div>
+          <div class="cmd-row">
+            <button id="btnSetup">setup book</button>
+            <button class="danger" id="btnFlatten">flatten</button>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <main>
+      <section class="clocks">
+        <div class="clock live">
+          <div class="who">crypto · 24/7</div>
+          <div class="read num" id="cryptoClock">00:00:00</div>
+          <div class="state">live</div>
+        </div>
+        <div class="clock frozen">
+          <div class="who">us equity · nvda</div>
+          <div class="read num">16:00:00</div>
+          <div class="state">closed</div>
+          <div class="reopens">
+            <div class="k">cash open</div>
+            <div class="v num" id="countdown">—</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="strip">
+        <div class="metric">
+          <div class="k">effective equity</div>
+          <div class="v num" id="mEquity">—</div>
+          <div class="s">observed, demo account</div>
+        </div>
+        <div>
+          <div id="sparkWrap"><svg id="sparkSvg"></svg></div>
+          <div id="sparkNote">—</div>
+        </div>
+        <div class="metric">
+          <div class="k">margin ratio</div>
+          <div class="v num" id="mRatio">—</div>
+          <div class="s">maintenance / equity</div>
+        </div>
+      </section>
+
+      <section class="risk-grid">
+        <div class="card">
+          <h2>collateral under stress</h2>
+          <div class="flow">
+            <div class="flow-line"><span class="k">rToken gross</span><span class="arrow"></span><span class="v num" id="rGross">—</span></div>
+            <div class="flow-line"><span class="k">haircut</span><span class="arrow">applied</span><span class="v num" id="rHaircut">—</span></div>
+            <div class="flow-line"><span class="k">effective collateral</span><span class="arrow"></span><span class="v num info" id="rEff">—</span></div>
+            <div class="flow-line"><span class="k">scenario rToken / crypto</span><span class="arrow">shock</span><span class="v num" id="rShock">—</span></div>
+            <div class="flow-line"><span class="k">shocked buffer</span><span class="arrow"></span><span class="v num" id="rBuffer">—</span></div>
+          </div>
+          <div class="verdict" id="rVerdict">no risk state recorded yet</div>
+        </div>
+
+        <div class="card">
+          <h2>governance</h2>
+          <div class="decision" style="border:none;padding:0;background:transparent">
+            <div class="dec-head">
+              <span class="dec-action mono" id="dAction">—</span>
+              <span class="dec-meta" id="dMeta">no cycle run yet</span>
+            </div>
+            <div class="rationale" id="dRationale">Run a governance cycle to see the agent decision, policy verdict and execution.</div>
+            <div class="policy-line" id="dPolicy"></div>
+            <div class="order-line mono" id="dOrder"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="stream">
+    <div class="stream-head">
+      <h2>ledger stream · live</h2>
+      <span class="dec-meta" id="streamCount">—</span>
+    </div>
+    <div class="stream-body" id="streamBody"></div>
+  </footer>
+
+  <div class="modal-bg" id="doctorBg">
+    <div class="modal">
+      <h3>doctor <button class="close" id="docClose">close</button></h3>
+      <div class="dec-pending" id="docPending">running 13 checks…</div>
+      <div id="docBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (v,d=2) => v==null ? "—" : Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtPct = v => v==null ? "—" : (v*100).toFixed(2)+"%";
+let currentShock = -0.08;
+let ledgerCache = [];
+
+/* ---------- clocks ---------- */
+function tick(){
+  const now = new Date();
+  $("utcClock").textContent = now.toISOString().replace("T"," ").slice(0,19)+" UTC";
+  $("cryptoClock").textContent = now.toISOString().slice(11,19);
+  updateCountdown(now);
+}
+function updateCountdown(now){
+  // next Monday 09:30 New York
+  const ny = new Date(now.toLocaleString("en-US",{timeZone:"America/New_York"}));
+  const target = new Date(ny);
+  const day = target.getDay(); // 0 Sun .. 6 Sat
+  let add = (8 - day) % 7; if(add===0) add = 7; // next Monday
+  target.setDate(target.getDate()+add);
+  target.setHours(9,30,0,0);
+  const diffMs = target - ny;
+  if(diffMs <= 0){ $("countdown").textContent = "open"; return; }
+  const h = Math.floor(diffMs/3.6e6), m = Math.floor(diffMs%3.6e6/6e4), s = Math.floor(diffMs%6e4/1e3);
+  $("countdown").textContent = (h>=24 ? Math.floor(h/24)+"d " : "") + (h%24)+"h "+m+"m";
+}
+setInterval(tick,1000); tick();
+
+/* ---------- status poll ---------- */
+async function pollStatus(){
+  try{
+    const r = await fetch("/api/status"); const d = await r.json();
+    const s = d.session||{};
+    $("sRegime").textContent = s.regime||"—";
+    $("sLiq").textContent = s.liquidity_tier||"—";
+    $("sConf").textContent = s.mark_confidence||"—";
+    const cashOpen = s.cash_market_open; 
+    $("sCash").textContent = cashOpen==null?"—":(cashOpen?"open":"closed");
+    $("sCash").className = "v mono "+(cashOpen?"ok":"warn");
+    $("sWeekend").textContent = s.weekend_tradable==null?"—":(s.weekend_tradable?"yes":"no");
+    const rb = $("regimeBadge");
+    rb.textContent = "session: "+(s.regime||"—");
+    rb.className = "badge "+(s.regime==="regular"?"ok":"warn");
+
+    const eq = d.equity==null?null:Number(d.equity);
+    $("aEquity").textContent = eq==null?"—":fmt(eq);
+    $("mEquity").textContent = eq==null?"—":fmt(eq,0)+" USDT";
+    $("aMmr").textContent = d.mmr==null?"—":fmt(Number(d.mmr))+" USDT";
+    const ratio = d.margin_ratio==null?null:Number(d.margin_ratio);
+    $("aRatio").textContent = ratio==null?"—":(ratio*100).toFixed(4)+"%";
+    $("mRatio").textContent = $("aRatio").textContent;
+
+    const body = $("posBody"); body.innerHTML = "";
+    (d.positions||[]).forEach(p=>{
+      const tr = document.createElement("tr");
+      const side = (p.posSide||"").toLowerCase();
+      tr.innerHTML = `<td class="mono">${p.symbol||"—"}</td>
+        <td><span class="pos-side ${side}">${side||"—"}</span></td>
+        <td class="r num">${p.total||"—"}</td>
+        <td class="r num">${p.markPrice||"—"}</td>`;
+      body.appendChild(tr);
+    });
+    if(!(d.positions||[]).length){
+      body.innerHTML = `<tr><td colspan="4" style="color:var(--faint)">no open positions</td></tr>`;
+    }
+  }catch(e){ /* leave last known values; never invent */ }
+}
+setInterval(pollStatus,12000); pollStatus();
+
+/* ---------- ledger: sparkline + stream + risk ---------- */
+async function pollLedger(){
+  try{
+    const r = await fetch("/api/ledger"); const d = await r.json();
+    ledgerCache = d.records||[];
+    renderSpark(); renderStream(); renderRiskFromLedger();
+  }catch(e){}
+}
+function seriesEquity(){
+  const pts = [];
+  for(const rec of ledgerCache){
+    const p = rec.payload||{};
+    let eq = null, ts = rec.ts;
+    if(rec.kind==="account_snapshot" && p.assets && p.assets.effEquity!=null) eq = Number(p.assets.effEquity);
+    if(rec.kind==="daemon_cycle" && p.account && p.account.equity!=null){ eq = Number(p.account.equity); ts = p.timestamp||rec.ts; }
+    if(eq!=null && eq>0) pts.push({ts,eq});
+  }
+  pts.sort((a,b)=> String(a.ts).localeCompare(String(b.ts)));
+  return pts;
+}
+function renderSpark(){
+  const pts = seriesEquity();
+  const svg = $("sparkSvg");
+  if(pts.length<2){
+    svg.innerHTML = "";
+    $("sparkNote").textContent = `collecting equity observations (${pts.length})`;
+    return;
+  }
+  const W = 600, H = 56, pad = 3;
+  const vals = pts.map(p=>p.eq);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = (max-min)||1;
+  const xs = pts.map((_,i)=> pad + i*(W-2*pad)/(pts.length-1));
+  const ys = vals.map(v=> H-pad - (v-min)*(H-2*pad)/span);
+  const dLine = xs.map((x,i)=> (i?"L":"M")+x.toFixed(1)+","+ys[i].toFixed(1)).join(" ");
+  const minI = vals.indexOf(min);
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+  svg.innerHTML = `
+    <path d="${dLine}" fill="none" stroke="#58A6FF" stroke-width="1.5"/>
+    <circle cx="${xs[minI].toFixed(1)}" cy="${ys[minI].toFixed(1)}" r="3" fill="#FFB020"/>`;
+  $("sparkNote").textContent = `${pts.length} real observations · ${fmt(min,0)} – ${fmt(max,0)} USDT`;
+}
+function latestRiskRecord(){
+  for(let i=ledgerCache.length-1;i>=0;i--){
+    const rec = ledgerCache[i]; const p = rec.payload||{};
+    if(rec.kind==="risk_state" && p.results) return p;
+    if(rec.kind==="daemon_cycle" && p.risk && p.risk.results) return p.risk;
+    if(rec.kind==="daemon_cycle" && p.risk){ // older schema
+      return {results:p.risk, modelled:{}, scenario:{}};
+    }
+  }
+  return null;
+}
+function renderRiskFromLedger(){
+  const p = latestRiskRecord();
+  const v = $("rVerdict");
+  if(!p){
+    v.textContent = "no risk state recorded yet";
+    v.className = "verdict";
+    return;
+  }
+  const r = p.results||{}, m = p.modelled||{}, sc = p.scenario||{};
+  if(m.rtoken_gross_value!=null) $("rGross").textContent = fmt(m.rtoken_gross_value,0)+" USDT";
+  if(m.haircut_pct!=null) $("rHaircut").textContent = (m.haircut_pct*100).toFixed(0)+"%";
+  if(m.rtoken_effective_collateral!=null) $("rEff").textContent = fmt(m.rtoken_effective_collateral,0)+" USDT";
+  if(sc.rtoken_shock_pct!=null||sc.crypto_shock_pct!=null)
+    $("rShock").textContent = (sc.rtoken_shock_pct*100).toFixed(0)+"% / "+(sc.crypto_shock_pct*100).toFixed(0)+"%";
+  if(r.shocked_buffer_usdt!=null) $("rBuffer").textContent = fmt(r.shocked_buffer_usdt,0)+" USDT";
+  if(r.breach===true){ v.textContent="breach · scenario exceeds maintenance"; v.className="verdict"; }
+  else if(r.needs_attention===true){ v.textContent="needs attention · loss above risk budget"; v.className="verdict"; }
+  else if(r.shocked_buffer_usdt!=null){ v.textContent="within budget"; v.className="verdict ok"; }
+  // decision panel from latest decision/daemon_cycle
+  for(let i=ledgerCache.length-1;i>=0;i--){
+    const rec = ledgerCache[i]; const pl = rec.payload||{};
+    const dec = (rec.kind==="decision" && pl.decision) || (rec.kind==="daemon_cycle" && pl.decision) || null;
+    if(dec && dec.action){
+      $("dAction").textContent = dec.action;
+      $("dAction").className = "dec-action mono "+(dec.used_fallback?"":"ok");
+      const lat = dec.latency_ms||0;
+      const latWarn = lat>30000 ? " · SLOW "+Math.round(lat/1000)+"s" : "";
+      $("dMeta").textContent = (dec.model||"—")+" · "+(dec.latency_ms||"—")+"ms"+latWarn+(dec.used_fallback?" · fallback":"");
+      if(dec.rationale) $("dRationale").textContent = dec.rationale;
+      const pol = pl.policy||{};
+      if(pol.action){
+        $("dPolicy").innerHTML = `policy: <b>${pol.approved?"approved":"rejected"}</b> → ${pol.action}${pol.override?" · override":""}`;
+      }
+      const ex = pl.execution||{};
+      if(ex && ex.reason){
+        $("dOrder").innerHTML = (ex.executed?"✓ ":"")+(ex.reason||"")+
+          (ex.orders&&ex.orders[0]&&ex.orders[0].orderId?` · <span class="oid">order ${ex.orders[0].orderId}</span>`:"");
+      }
+      break;
+    }
+  }
+}
+function summarize(rec){
+  const p = rec.payload||{};
+  switch(rec.kind){
+    case "session": return "regime "+((p.regime)||"—");
+    case "risk_state": { const r=p.results||{}; return "loss "+(r.modelled_loss_pct_of_equity!=null?(r.modelled_loss_pct_of_equity*100).toFixed(1)+"%":"—")+" · buffer "+(r.shocked_buffer_usdt!=null?fmt(r.shocked_buffer_usdt,0):"—"); }
+    case "decision": { const d=p.decision||{}; return (d.action||"—")+" · "+(d.model||""); }
+    case "execution": { const e=p.execution||{}; return (e.executed?"executed":"not executed")+" · "+(e.action||"—"); }
+    case "daemon_cycle": { const d=p.decision||{}; const r=(p.risk&&p.risk.results)||{}; return "cycle "+(p.cycle||"—")+" · "+(d.action||"—")+" · buffer "+(r.shocked_buffer_usdt!=null?fmt(r.shocked_buffer_usdt,0):"—"); }
+    case "daemon_start": return "daemon started · interval "+(p.interval||"—")+"s · execute "+(!!p.execute);
+    case "daemon_stop": return "daemon stopped · "+(p.total_cycles||0)+" cycles";
+    case "demo_book_setup": return (p.symbol||"—")+" long "+(p.qty||"—");
+    case "flatten": return "closed "+(p.symbol||"—")+" · ok "+(!!p.ok);
+    case "flatten_summary": return "remaining "+(p.remaining!=null?p.remaining:"—");
+    case "regime_transition": return (p.from||"—")+" → "+(p.to||"—");
+    default: return "";
+  }
+}
+function renderStream(){
+  const body = $("streamBody"); 
+  const recent = ledgerCache.slice(-40).reverse();
+  body.innerHTML = "";
+  recent.forEach(rec=>{
+    const div = document.createElement("div");
+    const cls = rec.kind==="decision"?"dec":(rec.kind==="execution"?"exec":"");
+    const ts = String(rec.ts||"").replace("T"," ").slice(5,19);
+    div.className = "entry "+cls;
+    div.innerHTML = `<span class="ts mono">${ts}</span><span class="kind mono">${rec.kind||""}</span><span class="txt">${summarize(rec)}</span>`;
+    body.appendChild(div);
+  });
+  $("streamCount").textContent = ledgerCache.length+" records";
+}
+setInterval(pollLedger,15000); pollLedger();
+
+/* ---------- shock picker ---------- */
+document.querySelectorAll(".shock-btn").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".shock-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    currentShock = parseFloat(btn.dataset.shock);
+  });
+});
+
+/* ---------- run cycle ---------- */
+$("execFlag").addEventListener("change",()=>{
+  $("execWarn").style.display = $("execFlag").checked?"block":"none";
+});
+$("btnCycle").addEventListener("click",async()=>{
+  const btn = $("btnCycle"); btn.disabled = true; btn.textContent = "cycle running…";
+  $("dMeta").textContent = "cycle in progress";
+  try{
+    const r = await fetch("/api/cycle",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({rtoken_shock:currentShock, execute:$("execFlag").checked})
+    });
+    const d = await r.json();
+    if(d.ok){
+      const res = d.result||{};
+      const dec = res.decision||{};
+      $("dAction").textContent = dec.action||"—";
+      $("dAction").className = "dec-action mono "+(dec.used_fallback?"":"ok");
+      const lat = dec.latency_ms||0;
+      const latWarn = lat>30000 ? " · SLOW "+Math.round(lat/1000)+"s" : "";
+      $("dMeta").textContent = (dec.model||"—")+" · "+(dec.latency_ms||"—")+"ms"+latWarn+(dec.used_fallback?" · fallback":"");
+      if(dec.rationale) $("dRationale").textContent = dec.rationale;
+      const pol = res.policy||{};
+      $("dPolicy").innerHTML = `policy: <b>${pol.approved?"approved":"rejected"}</b> → ${pol.action||"—"}${pol.override?" · override":""}`;
+      const ex = res.execution||{};
+      $("dOrder").textContent = (ex.executed?"✓ ":"")+(ex.reason||"no order required");
+    }else{
+      $("dRationale").textContent = "cycle failed: "+(d.error||"unknown error");
+    }
+  }catch(e){
+    $("dRationale").textContent = "cycle failed: "+e;
+  }
+  btn.disabled = false; btn.textContent = "run governance cycle";
+  pollLedger(); pollStatus();
+});
+
+/* ---------- daemon ---------- */
+async function refreshDaemon(){
+  try{
+    const r = await fetch("/api/action/daemon"); const d = await r.json();
+    const b = $("daemonBadge"), btn = $("btnDaemon");
+    if(d.running){
+      b.textContent = "daemon: running · "+(d.cycles_completed||0)+" cycles";
+      b.className = "badge ok";
+      btn.textContent = "stop daemon";
+    }else{
+      b.textContent = "daemon: idle"; b.className = "badge";
+      btn.textContent = "start daemon";
+    }
+  }catch(e){}
+}
+$("btnDaemon").addEventListener("click",async()=>{
+  const r = await fetch("/api/action/daemon"); const st = await r.json();
+  const action = st.running?"stop":"start";
+  await fetch("/api/action/daemon",{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action, interval:60, execute:$("execFlag").checked, shock:currentShock})
+  });
+  refreshDaemon();
+});
+setInterval(refreshDaemon,10000); refreshDaemon();
+
+/* ---------- doctor ---------- */
+$("btnDoctor").addEventListener("click",async()=>{
+  $("doctorBg").classList.add("open");
+  $("docPending").style.display="block"; $("docBody").innerHTML="";
+  try{
+    const r = await fetch("/api/action/doctor",{method:"POST"});
+    const d = await r.json();
+    $("docPending").style.display="none";
+    const body = $("docBody"); body.innerHTML="";
+    (d.checks||[]).forEach(c=>{
+      const div = document.createElement("div");
+      div.className = "doc-row";
+      div.innerHTML = `<span class="st ${c.ok?"p":"f"}">${c.ok?"PASS":"FAIL"}</span>
+        <span class="nm">${c.name}</span><span class="dt">${c.detail||""}</span>`;
+      body.appendChild(div);
+    });
+    const sum = document.createElement("div");
+    sum.style.cssText = "margin-top:10px;font-size:12px;color:"+(d.ok?"var(--safe)":"var(--risk)");
+    sum.textContent = `${d.passed}/${d.total} checks passed`;
+    body.appendChild(sum);
+  }catch(e){
+    $("docPending").textContent = "doctor failed: "+e;
+  }
+});
+$("docClose").addEventListener("click",()=>$("doctorBg").classList.remove("open"));
+$("doctorBg").addEventListener("click",e=>{ if(e.target===$("doctorBg")) $("doctorBg").classList.remove("open"); });
+
+/* ---------- setup / flatten ---------- */
+$("btnSetup").addEventListener("click",async()=>{
+  $("btnSetup").disabled=true; $("btnSetup").textContent="setting up…";
+  try{
+    await fetch("/api/action/setup",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({symbol:"BTCUSDT", qty:"2"})
+    });
+  }catch(e){}
+  $("btnSetup").disabled=false; $("btnSetup").textContent="setup book";
+  pollStatus(); pollLedger();
+});
+$("btnFlatten").addEventListener("click",async()=>{
+  $("btnFlatten").disabled=true; $("btnFlatten").textContent="flattening…";
+  try{
+    await fetch("/api/action/flatten",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});
+  }catch(e){}
+  $("btnFlatten").disabled=false; $("btnFlatten").textContent="flatten";
+  pollStatus(); pollLedger();
+});
+</script>
+</body>
+</html>
