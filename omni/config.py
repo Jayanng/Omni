@@ -51,18 +51,25 @@ RTOKEN_TO_STOCK_PERP = {
     "RQQQUSDT": "NDX100USDT",
 }
 
-# Fallback perpetual when the rToken symbol is not in the mapping above.
+# Documented default used only when a caller explicitly asks for one. It is NOT
+# substituted silently for an unmapped symbol: hedging the wrong instrument is
+# worse than refusing to hedge.
 DEFAULT_HEDGE_PERP = "NVDAUSDT"
 
 
 def stock_perp_for(rtoken_symbol: str) -> str:
-    """Map an rToken symbol, or an already-mapped perpetual, to a perpetual symbol."""
+    """Map an rToken symbol, or an already-mapped perpetual, to a perpetual symbol.
+
+    Returns an empty string when the symbol is not in the mapping. Callers must
+    treat that as "no hedge instrument available" and refuse to act, rather than
+    defaulting to some other instrument.
+    """
     symbol = (rtoken_symbol or "").strip().upper()
     if symbol in RTOKEN_TO_STOCK_PERP:
         return RTOKEN_TO_STOCK_PERP[symbol]
     if symbol.endswith("USDT") and symbol in set(RTOKEN_TO_STOCK_PERP.values()):
         return symbol
-    return DEFAULT_HEDGE_PERP
+    return ""
 
 
 def mapped_stock_perps() -> tuple:
@@ -120,6 +127,16 @@ def _resolve(name: str, file_env: dict) -> str:
     return os.environ.get(name) or file_env.get(name, "")
 
 
+def _resolve_float(name: str, file_env: dict, default: float) -> float:
+    raw = _resolve(name, file_env)
+    if raw == "":
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 @dataclass
 class Config:
     api_key: str
@@ -132,6 +149,11 @@ class Config:
     llm_fallback_model: str
     log_dir: Path
     timeout: int = 30
+    # Declared risk inputs, exposed so they are configuration rather than
+    # constants buried in the model. Overridable by env or .env.
+    risk_threshold_usdt: float = 250.0
+    risk_budget_pct: float = 0.10
+    policy_max_hedge_notional_usdt: float = 5_000.0
 
     @property
     def has_credentials(self) -> bool:
@@ -175,4 +197,9 @@ def load_config() -> Config:
         llm_fallback_model=_resolve("OMNI_LLM_FALLBACK_MODEL", file_env),
         log_dir=log_dir,
         timeout=int(_resolve("OMNI_TIMEOUT", file_env) or 30),
+        risk_threshold_usdt=_resolve_float("OMNI_RISK_THRESHOLD_USDT", file_env, 250.0),
+        risk_budget_pct=_resolve_float("OMNI_RISK_BUDGET_PCT", file_env, 0.10),
+        policy_max_hedge_notional_usdt=_resolve_float(
+            "OMNI_POLICY_MAX_HEDGE_NOTIONAL", file_env, 5_000.0
+        ),
     )

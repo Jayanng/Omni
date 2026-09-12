@@ -22,12 +22,20 @@ from . import llm as llm_mod
 from . import metrics as metrics_mod
 from .bitget_demo import DemoClient, DemoCliError
 from .collateral import RTokenPosition
-from .config import ROOT, load_config, mapped_stock_perps, stock_perp_for
+from .config import (
+    RTOKEN_TO_STOCK_PERP,
+    ROOT,
+    load_config,
+    mapped_stock_perps,
+    stock_code_for,
+    stock_perp_for,
+)
 from .executor import execute
 from .ledger import Ledger
+from .scenario import crypto_proxy_symbol, empirical_tail_shock
 from .venue_risk import query_haircut
 from .policy import PolicyConfig, validate
-from .risk import FuturesPosition, evaluate, shock_for
+from .risk import FuturesPosition, evaluate
 from .session import classify
 
 DEFAULT_PORTFOLIO = ROOT / "demo" / "portfolio.example.json"
@@ -77,9 +85,36 @@ def load_portfolio(path: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _doctor_symbols(args=None) -> tuple:
+    """Symbols the doctor should probe, derived from config and the portfolio.
+
+    Returns (rtoken_symbol, stock_code). Falls back to the first entry of the
+    rToken mapping only when the portfolio declares nothing, so the checks are
+    never pinned to a literal symbol.
+    """
+    rtoken = str(getattr(args, "rtoken", "") or "").upper()
+    if not rtoken:
+        path = Path(getattr(args, "portfolio", "") or DEFAULT_PORTFOLIO)
+        if path.exists():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                for row in data.get("rtoken_positions", []):
+                    sym = str(row.get("symbol", "")).upper()
+                    if sym:
+                        rtoken = sym
+                        break
+            except (OSError, json.JSONDecodeError):
+                pass
+    if not rtoken:
+        mapped = sorted(RTOKEN_TO_STOCK_PERP)
+        rtoken = mapped[0] if mapped else ""
+    return rtoken, stock_code_for(rtoken) if rtoken else ""
+
+
 def cmd_doctor(args) -> int:
     cfg = load_config()
     checks: list[tuple[str, bool, str]] = []
+    rtoken_symbol, stock_code = _doctor_symbols(args)
 
     checks.append(
         ("demo credentials present", cfg.has_credentials,
@@ -90,15 +125,20 @@ def cmd_doctor(args) -> int:
     checks.append(("llm configured", cfg.has_llm, f"{cfg.llm_model} at {cfg.llm_base_url}"))
 
     _print("public data sources")
-    for name, fn in (
-        ("reality market states", lambda: bp.market_states()),
-        ("reality stock info", lambda: bp.stock_info("RNVDAUSDT")),
-        ("reality market calendar", lambda: bp.market_calendar("NVDA")),
-        ("reality dividends", lambda: bp.dividends("NVDA")),
-        ("rToken ticker", lambda: bp.ticker("RNVDAUSDT")),
-        ("rToken candles", lambda: bp.candles("RNVDAUSDT", "1H", 3)),
-        ("rToken order book", lambda: bp.orderbook("RNVDAUSDT", 5)),
-    ):
+    probes = [("reality market states", lambda: bp.market_states())]
+    if rtoken_symbol:
+        probes += [
+            ("reality stock info", lambda: bp.stock_info(rtoken_symbol)),
+            ("rToken ticker", lambda: bp.ticker(rtoken_symbol)),
+            ("rToken candles", lambda: bp.candles(rtoken_symbol, "1H", 3)),
+            ("rToken order book", lambda: bp.orderbook(rtoken_symbol, 5)),
+        ]
+    if stock_code:
+        probes += [
+            ("reality market calendar", lambda: bp.market_calendar(stock_code)),
+            ("reality dividends", lambda: bp.dividends(stock_code)),
+        ]
+    for name, fn in probes:
         try:
             payload = fn()
             ok = bool(payload)
@@ -170,9 +210,13 @@ def cmd_status(args) -> int:
     ledger = Ledger(cfg.log_dir)
     client = DemoClient(cfg)
 
-    stock_rows = bp.stock_info("RNVDAUSDT") or [{}]
-    session = classify(bp.market_states(), stock_rows[0], bp.market_calendar("NVDA"))
-    tick = bp.ticker("RNVDAUSDT")
+    rtoken_symbol, stock_code = _doctor_symbols(args)
+    if not rtoken_symbol:
+        raise RuntimeError("no rToken declared in the portfolio and none passed on the command line")
+    stock_rows = bp.stock_info(rtoken_symbol) or [{}]
+    calendar = bp.market_calendar(stock_code) if stock_code else {}
+    session = classify(bp.market_states(), stock_rows[0], calendar)
+    tick = bp.ticker(rtoken_symbol)
 
     _print("session")
     print(json.dumps(session.to_dict(), indent=2))
@@ -213,9 +257,20 @@ def run_cycle(execute_action: bool, args) -> int:
     portfolio = load_portfolio(Path(args.portfolio) if args.portfolio else DEFAULT_PORTFOLIO)
 
     _print("1. event intake: session and calendar")
-    stock_rows = bp.stock_info(args.rtoken)
+    declared_rtokens = [
+        str(r.get("symbol", "")).upper()
+        for r in portfolio.get("rtoken_positions", [])
+        if r.get("symbol")
+    ]
+    resolved_rtoken = (args.rtoken or (declared_rtokens[0] if declared_rtokens else "")).upper()
+    if not resolved_rtoken:
+        raise RuntimeError(
+            "no rToken declared in the portfolio and none passed on the command line"
+        )
+    print(f"  governing rToken: {resolved_rtoken}")
+    stock_rows = bp.stock_info(resolved_rtoken)
     if not stock_rows:
-        raise RuntimeError(f"no Reality stock info returned for {args.rtoken}")
+        raise RuntimeError(f"no Reality stock info returned for {resolved_rtoken}")
     stock = stock_rows[0]
     code = stock.get("code") or next(
         (r.get("code") for r in portfolio.get("rtoken_positions", []) if r.get("code")), ""
@@ -282,7 +337,12 @@ def run_cycle(execute_action: bool, args) -> int:
         )
     raw_positions = client.positions()
     stock_perps = _stock_perp_symbols(client)
-    hedge_symbol = stock_perp_for(args.rtoken)
+    hedge_symbol = stock_perp_for(resolved_rtoken)
+    if not hedge_symbol:
+        print(
+            f"  [BLOCK] no mapped hedge instrument for {resolved_rtoken}; "
+            "protective execution is unavailable for this symbol"
+        )
     futures = []
     for p in raw_positions:
         symbol = p["symbol"]
@@ -300,11 +360,11 @@ def run_cycle(execute_action: bool, args) -> int:
             )
         )
     print(f"  effective equity={eff_equity:,.2f} USDT, open futures positions={len(futures)}")
-    print(f"  hedge instrument for {args.rtoken}: {hedge_symbol}")
+    if hedge_symbol:
+        print(f"  hedge instrument for {resolved_rtoken}: {hedge_symbol}")
     for pos in futures:
-        shock = shock_for(pos.asset_class, args.rtoken_shock, args.crypto_shock)
         print(f"    {pos.symbol} {pos.pos_side} notional={pos.notional:,.2f} "
-              f"asset_class={pos.asset_class} shock={shock:+.1%}")
+              f"asset_class={pos.asset_class}")
     ledger.record("account_snapshot", {
         "assets": assets, "sections": sections, "source": "account_overview",
     })
@@ -315,19 +375,66 @@ def run_cycle(execute_action: bool, args) -> int:
                        avg_price=float(r.get("avg_price", 0.0)))
         for r in portfolio.get("rtoken_positions", [])
     ]
-    # Venue-sourced haircut, same rule as the daemon: query the published
-    # discount-rate schedule for the portfolio's rToken coin and fall back to
-    # the explicit --haircut input when the venue read fails. The source of the
-    # value actually used is printed and recorded.
+    # Venue-sourced haircut, same rule as the daemon. An explicit --haircut is
+    # an operator override and is recorded as such; otherwise the venue's
+    # published discount rate is used, and if that read fails the collateral is
+    # treated as unusable rather than assuming a value.
     rtoken_holding_value = sum(
         p.qty * marks.get(p.symbol, p.avg_price or 0.0) for p in rtoken_positions
     )
-    haircut_pct = args.haircut
-    haircut_source = args.haircut_source or "explicit --haircut input"
-    quote = query_haircut(client, args.rtoken, rtoken_holding_value)
-    if quote is not None:
-        haircut_pct = quote.haircut_pct
-        haircut_source = quote.source
+    if args.haircut is not None:
+        haircut_pct = args.haircut
+        haircut_source = args.haircut_source or "explicit operator override"
+        haircut_verified = False
+    else:
+        quote = query_haircut(client, resolved_rtoken, rtoken_holding_value)
+        if quote is not None:
+            haircut_pct = quote.haircut_pct
+            haircut_source = quote.source
+            haircut_verified = True
+        else:
+            haircut_pct = 1.0
+            haircut_source = (
+                "venue discount-rate read failed and no override supplied; collateral "
+                "treated as unusable (conservative), no haircut invented"
+            )
+            haircut_verified = False
+
+    # Scenario shocks derived from the instruments' own realised history unless
+    # explicitly overridden. Never invented.
+    shock_provenance = {}
+    if args.rtoken_shock is not None:
+        rtoken_shock = args.rtoken_shock
+        shock_provenance["rtoken"] = {"method": "explicit operator override"}
+    else:
+        est = empirical_tail_shock(resolved_rtoken)
+        if est is None:
+            raise RuntimeError(
+                f"cannot derive a scenario shock for {resolved_rtoken}: no usable candle "
+                "history and no explicit override"
+            )
+        rtoken_shock = est.shock_pct
+        shock_provenance["rtoken"] = est.to_dict()
+
+    crypto_positions = [f for f in futures if f.asset_class != "stock"]
+    if args.crypto_shock is not None:
+        crypto_shock = args.crypto_shock
+        shock_provenance["crypto"] = {"method": "explicit operator override"}
+    elif crypto_positions:
+        proxy = crypto_proxy_symbol(futures)
+        est = empirical_tail_shock(proxy) if proxy else None
+        if est is None:
+            raise RuntimeError(
+                "cannot derive a crypto scenario shock: no usable candle history for "
+                f"{proxy or '(no crypto position)'} and no explicit override"
+            )
+        crypto_shock = est.shock_pct
+        shock_provenance["crypto"] = est.to_dict()
+    else:
+        crypto_shock = 0.0
+        shock_provenance["crypto"] = {
+            "method": "no crypto perpetual exposure in the book; shock not applied"
+        }
 
     risk = evaluate(
         as_of=_now(),
@@ -336,13 +443,21 @@ def run_cycle(execute_action: bool, args) -> int:
         rtoken_marks=marks,
         futures_positions=futures,
         haircut_pct=haircut_pct,
-        rtoken_shock_pct=args.rtoken_shock,
-        crypto_shock_pct=args.crypto_shock,
+        rtoken_shock_pct=rtoken_shock,
+        crypto_shock_pct=crypto_shock,
         hedge_symbol=hedge_symbol,
+        risk_threshold_usdt=cfg.risk_threshold_usdt,
+        risk_budget_pct=cfg.risk_budget_pct,
     )
     rd = risk.to_dict()
     rd["modelled"]["haircut_source"] = haircut_source
+    rd["modelled"]["haircut_verified"] = haircut_verified
     rd["modelled"]["haircut_input"] = args.haircut
+    rd["scenario"]["provenance"] = shock_provenance
+    if not hedge_symbol:
+        rd["modelled"]["hedge_instrument_block"] = (
+            f"no mapping entry for {resolved_rtoken}; protective execution unavailable"
+        )
 
     # Simulated cost of exiting the rToken leg into the stressed book. Bitget's
     # demo service does not execute RWA orders, so this is marked simulated and
@@ -353,7 +468,7 @@ def run_cycle(execute_action: bool, args) -> int:
         if not book:
             continue
         fill = coll.simulate_fill(
-            pos.symbol, "sell", pos.qty, book, shock_pct=args.rtoken_shock
+            pos.symbol, "sell", pos.qty, book, shock_pct=rtoken_shock
         )
         simulated_exits.append(fill.to_dict())
     if simulated_exits:
@@ -363,7 +478,14 @@ def run_cycle(execute_action: bool, args) -> int:
     print(f"  haircut applied              : {haircut_pct:.1%}")
     print(f"  haircut source               : {haircut_source}")
     print(f"  effective collateral         : {rd['modelled']['rtoken_effective_collateral']:,.2f} USDT")
-    print(f"  scenario rToken / crypto     : {args.rtoken_shock:+.1%} / {args.crypto_shock:+.1%}")
+    print(f"  scenario rToken / crypto     : {rtoken_shock:+.1%} / {crypto_shock:+.1%}")
+    for leg, prov in shock_provenance.items():
+        method = prov.get("method", "") if isinstance(prov, dict) else str(prov)
+        samples = prov.get("samples") if isinstance(prov, dict) else None
+        extra = f" (n={samples})" if samples else ""
+        print(f"  {leg} shock source            : {method}{extra}")
+        if isinstance(prov, dict) and prov.get("source"):
+            print(f"  {leg} shock endpoint          : {prov['source']}")
     print(f"  shocked buffer               : {rd['results']['shocked_buffer_usdt']:,.2f} USDT")
     print(f"  breach                       : {rd['results']['breach']}")
     print(f"  {rd['results']['narrative']}")
@@ -384,7 +506,12 @@ def run_cycle(execute_action: bool, args) -> int:
     ledger.record("decision", {"decision": decision.to_dict(), "session_regime": session.regime})
 
     _print("6. policy layer (allowlist, caps, forced protection)")
-    policy_cfg = PolicyConfig(max_order_notional_usdt=args.max_hedge_notional)
+    effective_policy_cap = (
+        args.max_hedge_notional
+        if args.max_hedge_notional is not None
+        else cfg.policy_max_hedge_notional_usdt
+    )
+    policy_cfg = PolicyConfig(max_order_notional_usdt=effective_policy_cap)
     policy = validate(decision.action, decision.params, rd, session.to_dict(), policy_cfg)
     print(f"  approved={policy.approved} action={policy.action} override={policy.override}")
     print(f"  reason: {policy.reason[:300]}")
@@ -534,16 +661,29 @@ def build_parser() -> argparse.ArgumentParser:
     # subcommand, so scenarios can be written either before or after the verb.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--portfolio", help="path to the declared portfolio json")
-    common.add_argument("--rtoken", default="RNVDAUSDT", help="rToken symbol to monitor")
-    common.add_argument("--haircut", type=float, default=0.15,
-                        help="rToken collateral ratio applied in the model")
-    common.add_argument("--haircut-source", default="", help="documented source of the haircut")
-    common.add_argument("--rtoken-shock", type=float, default=-0.04,
-                        help="scenario rToken shock, e.g. -0.04")
-    common.add_argument("--crypto-shock", type=float, default=-0.06,
-                        help="scenario crypto shock, e.g. -0.06")
-    common.add_argument("--max-hedge-notional", type=float, default=5_000.0,
-                        help="policy cap on a single protective hedge, in USDT")
+    common.add_argument(
+        "--rtoken", default="",
+        help="rToken symbol to govern; empty means resolve it from the declared portfolio",
+    )
+    common.add_argument(
+        "--haircut", type=float, default=None,
+        help="explicit haircut override; omit to use the venue's published discount rate",
+    )
+    common.add_argument("--haircut-source", default="",
+                        help="documented source of an explicit haircut override")
+    common.add_argument(
+        "--rtoken-shock", type=float, default=None,
+        help="explicit rToken shock override; omit to derive it from realised candle history",
+    )
+    common.add_argument(
+        "--crypto-shock", type=float, default=None,
+        help="explicit crypto shock override; omit to derive it from realised candle history",
+    )
+    common.add_argument(
+        "--max-hedge-notional", type=float, default=None,
+        help="policy cap on a single protective hedge, in USDT; "
+             "omit to use OMNI_POLICY_MAX_HEDGE_NOTIONAL",
+    )
 
     parser = argparse.ArgumentParser(
         prog="omni",
@@ -582,7 +722,7 @@ def build_parser() -> argparse.ArgumentParser:
     daemon.add_argument("--max-iterations", type=int, default=None, help="stop after N cycles")
     daemon.set_defaults(func=cmd_daemon)
 
-    ui = sub.add_parser("ui", help="launch Floor-style live visual cockpit",
+    ui = sub.add_parser("ui", help="launch the operator console",
                         parents=[common])
     ui.add_argument("--port", type=int, default=8080, help="port to listen on (default: 8080)")
     ui.set_defaults(func=cmd_ui)

@@ -129,12 +129,17 @@ python3 -m unittest discover -s tests
 
 Taken verbatim from `evidence/demo-run-2026-09-11.log`, run A of `demo/run_demo.sh`.
 
-**Note on the haircut shown below:** this transcript predates the venue
-discount-rate integration. It shows the 15% explicit fallback that was in use on
-2026-09-11. Current runs query the venue and report 5.0% for rNVDA at the demo
-tier, with the source printed on the `haircut source` line. The transcript is
-kept unedited as a real historical record; see [docs/evidence.md](docs/evidence.md)
-for the current venue-sourced values.
+**Note on this transcript:** it predates two changes and is kept unedited as a
+real historical record.
+
+1. The haircut shows the 15% explicit fallback in use on 2026-09-11. Current runs
+   query the venue and report 5.0% for rNVDA at the demo tier, printed on the
+   `haircut source` line.
+2. The scenario shocks were fixed constants (`-8%`/`-25%` in this run). Current
+   runs derive them from realised candle history and print the method, sample
+   size and endpoint.
+
+See [docs/evidence.md](docs/evidence.md) for the current values and sources.
 
 ```text
 === 1. event intake: session and calendar ===
@@ -203,6 +208,8 @@ omni/
   collateral.py     haircut-adjusted collateral and depth-aware simulated fills
   risk.py           deterministic cross-asset shock and margin engine
   llm.py            LLM decision layer with retries and a deterministic fallback
+  scenario.py       derives scenario shocks from live realised candle history
+  venue_risk.py     venue-published haircut, MMR tiers and order size caps
   policy.py         allowlist, caps, hard vetoes and forced minimum protection
   executor.py       dry run, execution, venue size-limit adaptation, readback
   ledger.py         JSONL evidence ledger
@@ -218,8 +225,9 @@ tests/
   test_engine.py         31 stdlib unit tests (risk, policy, executor, collateral)
   test_venue_risk.py      9 stdlib unit tests (venue parameter lookups)
   test_config.py          7 stdlib unit tests (symbol mapping helpers)
+  test_scenario.py       10 stdlib unit tests (live-derived shock estimation)
   test_actions.py         5 stdlib unit tests (log buffer, daemon manager, report)
-                        52 tests total, stdlib unittest only, no third-party runner
+                        62 tests total, stdlib unittest only, no third-party runner
 tools/
   review_scan.py         unused import, long line and tab scan
   llm_latency_probe.py   measures model latency and fallback rate in isolation
@@ -238,15 +246,24 @@ evidence/
 ## Honest boundaries
 
 - The risk engine is a **scenario model**, not Bitget's official margin or liquidation engine.
-  Maintenance-margin inputs are venue-sourced from the published position-tier ladder, and the
-  rToken haircut is queried live from the venue's discount-rate schedule (5% for rNVDA at the demo
-  tier) with the explicit `--haircut` flag as a documented fallback.
+  Maintenance-margin inputs come from the published position-tier ladder, and the rToken haircut is
+  queried live from the venue discount-rate schedule (5% for rNVDA at the demo tier).
+- **Every market input is live or venue-published; none is assumed.** The scenario shocks are
+  derived each cycle from the instrument's own realised candle history (a lower-tail quantile of
+  daily returns), not from constants. The method, sample size and endpoint are recorded per cycle.
+- Where a live read fails, the model **fails toward caution**: an unreadable haircut means the
+  collateral is treated as unusable rather than assigned a guessed value, an underminable shock
+  stops the cycle rather than reporting a stress result built on a guess, and an unmapped rToken
+  refuses to hedge rather than shorting a guessed instrument.
 - Bitget's demo service **does not support rToken (RWA) order execution**. rToken positions are
   therefore valued from live production data with fills simulated against the real order book,
   and every such fill is labelled `simulated`. Execution is real paper execution on the futures
   leg. See [docs/evidence.md](docs/evidence.md) for the proving tests.
 - Omni does not claim to guarantee that an account avoids liquidation. It claims to model the
   risk, act early under an explicit scenario, and log everything.
+
+Risk policy inputs (threshold, risk budget, hedge cap) are declared configuration, overridable by
+env, and recorded in every cycle record. They are policy choices, not market assumptions.
 
 ## License
 

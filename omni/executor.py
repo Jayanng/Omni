@@ -111,7 +111,7 @@ def _step_from_result(name: str, result) -> ExecutionStep:
 
 
 def execute(action: str, params: dict, client: DemoClient, marks: dict,
-            hedge_symbol: str = "NVDAUSDT") -> ExecutionResult:
+            hedge_symbol: str = "") -> ExecutionResult:
     steps: list[ExecutionStep] = []
     orders: list[dict] = []
 
@@ -126,7 +126,19 @@ def execute(action: str, params: dict, client: DemoClient, marks: dict,
     if action == "HEDGE_STOCK_PERP":
         notional = float(params.get("notional_usdt") or 0.0)
         # Accept either an rToken symbol or a stock perpetual symbol and map it.
+        # An unmapped symbol yields "", and we refuse rather than guess an
+        # instrument to short.
         hedge_symbol = stock_perp_for(str(params.get("symbol") or hedge_symbol))
+        if not hedge_symbol:
+            return ExecutionResult(
+                action=action,
+                executed=False,
+                reason=(
+                    "no mapped hedge instrument for "
+                    f"{params.get('symbol') or hedge_symbol!r}; refusing to guess"
+                ),
+                steps=steps,
+            )
         mark = float(marks.get(hedge_symbol) or 0.0)
         if mark <= 0:
             return ExecutionResult(

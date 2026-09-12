@@ -11,17 +11,26 @@ Provides 1:1 parity between CLI terminal commands and Web UI actions:
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from . import bitget_public as bp
 from . import metrics as metrics_mod
 from .bitget_demo import DemoClient
-from .config import ROOT, load_config
+from .config import (
+    RTOKEN_TO_STOCK_PERP,
+    ROOT,
+    load_config,
+    mapped_stock_perps,
+    stock_code_for,
+    stock_perp_for,
+)
 from .daemon import DaemonConfig, OmniDaemon
 from .ledger import Ledger
 from .session import classify
@@ -67,10 +76,39 @@ GLOBAL_TERMINAL_LOGS = TerminalLogBuffer()
 # ---------------------------------------------------------------------------
 
 
+def _declared_symbols() -> tuple:
+    """rToken and stock code for the doctor probes, derived from the portfolio.
+
+    Nothing is pinned to a literal symbol: the declared portfolio is the source,
+    and only if it declares nothing do we take the first mapped rToken.
+    """
+    rtoken = ""
+    path = Path(DEFAULT_PORTFOLIO)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            for row in data.get("rtoken_positions", []):
+                sym = str(row.get("symbol", "")).upper()
+                if sym:
+                    rtoken = sym
+                    break
+        except (OSError, json.JSONDecodeError):
+            pass
+    if not rtoken:
+        perps = mapped_stock_perps()
+        for sym, perp in sorted(RTOKEN_TO_STOCK_PERP.items()):
+            if perp in perps:
+                rtoken = sym
+                break
+    return rtoken, (stock_code_for(rtoken) if rtoken else "")
+
+
 def run_doctor() -> dict[str, Any]:
     cfg = load_config()
     checks_dict: dict[str, tuple[bool, str]] = {}
     logs: list[str] = []
+    rtoken_symbol, stock_code = _declared_symbols()
+    hedge_symbol = stock_perp_for(rtoken_symbol)
 
     logs.append(f"[{_now()}] $ omni doctor")
     logs.append(f"[{_now()}] === OMNI DOCTOR DIAGNOSTICS (13 CHECKS) ===")
@@ -102,27 +140,27 @@ def run_doctor() -> dict[str, Any]:
         return bool(res), f"{len(res)} rows" if isinstance(res, list) else "ok"
 
     def check_stock_info():
-        res = bp.stock_info("RNVDAUSDT")
+        res = bp.stock_info(rtoken_symbol)
         return bool(res), f"{len(res)} rows" if isinstance(res, list) else "ok"
 
     def check_calendar():
-        res = bp.market_calendar("NVDA")
+        res = bp.market_calendar(stock_code)
         return bool(res), f"{len(res)} rows" if isinstance(res, list) else "ok"
 
     def check_dividends():
-        res = bp.dividends("NVDA")
+        res = bp.dividends(stock_code)
         return bool(res), "ok"
 
     def check_ticker():
-        res = bp.ticker("RNVDAUSDT")
+        res = bp.ticker(rtoken_symbol)
         return bool(res), "ok"
 
     def check_candles():
-        res = bp.candles("RNVDAUSDT", "1H", 3)
+        res = bp.candles(rtoken_symbol, "1H", 3)
         return bool(res), f"{len(res)} rows" if isinstance(res, list) else "ok"
 
     def check_orderbook():
-        res = bp.orderbook("RNVDAUSDT", 5)
+        res = bp.orderbook(rtoken_symbol, 5)
         return bool(res), f"{len(res)} rows" if isinstance(res, list) else "ok"
 
     def check_account_overview():
@@ -138,7 +176,7 @@ def run_doctor() -> dict[str, Any]:
         if not cfg.has_credentials:
             return False, "no credentials"
         preview = client.place_order(
-            "USDT-FUTURES", "NVDAUSDT", "sell", "market", "0.05",
+            "USDT-FUTURES", hedge_symbol, "sell", "market", "0.05",
             pos_side="short", reduce_only="no", dry_run=True,
         )
         return bool(preview.ok), "order preview returned successfully" if preview.ok else "dry run failed"
@@ -184,8 +222,8 @@ def run_doctor() -> dict[str, Any]:
     # 13. Session classifier
     logs.append(f"[{_now()}] === SESSION CLASSIFIER ===")
     try:
-        stock_info = (bp.stock_info("RNVDAUSDT") or [{}])[0]
-        calendar = bp.market_calendar("NVDA")
+        stock_info = (bp.stock_info(rtoken_symbol) or [{}])[0]
+        calendar = bp.market_calendar(stock_code) if stock_code else {}
         state = classify(bp.market_states(), stock_info, calendar)
         detail = (
             f"regime={state.regime}, liquidity={state.liquidity_tier}, "
@@ -406,7 +444,8 @@ class WebDaemonManager:
         self._lock = threading.Lock()
         self.interval: int = 60
         self.execute: bool = False
-        self.shock: float = -0.25
+        # None means the daemon derives the scenario shock from live history.
+        self.shock: float | None = None
         self.cycles_completed: int = 0
         self.last_cycle_time: str = ""
         self.last_action: str = ""
@@ -416,7 +455,7 @@ class WebDaemonManager:
         with self._lock:
             return self._thread is not None and self._thread.is_alive()
 
-    def start(self, interval: int = 60, execute: bool = True, shock: float = -0.25) -> dict[str, Any]:
+    def start(self, interval: int = 60, execute: bool = False, shock: float | None = None) -> dict[str, Any]:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return {"ok": True, "running": True, "message": "Daemon is already running"}

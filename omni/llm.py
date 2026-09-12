@@ -113,11 +113,14 @@ def fallback_decision(risk_state: dict, reason: str) -> Decision:
     positions = (risk_state.get("observed") or {}).get("positions") or []
 
     if breach or needs:
-        if hedge.get("notional_usdt"):
+        # Only hedge when the model has a real mapped instrument. The symbol is
+        # never defaulted: hedging an arbitrary stock perpetual would be worse
+        # than not hedging at all.
+        if hedge.get("notional_usdt") and hedge.get("symbol"):
             return Decision(
                 action="HEDGE_STOCK_PERP",
                 params={
-                    "symbol": hedge.get("symbol") or "NVDAUSDT",
+                    "symbol": hedge["symbol"],
                     "notional_usdt": hedge["notional_usdt"],
                 },
                 rationale=(

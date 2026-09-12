@@ -24,9 +24,12 @@ class TestSymbolMapping(unittest.TestCase):
     def test_already_mapped_perp_passes_through(self):
         self.assertEqual(stock_perp_for("NVDAUSDT"), "NVDAUSDT")
 
-    def test_unknown_symbol_falls_back_to_default(self):
-        self.assertEqual(stock_perp_for("RZZZZUSDT"), DEFAULT_HEDGE_PERP)
-        self.assertEqual(stock_perp_for(""), DEFAULT_HEDGE_PERP)
+    def test_unknown_symbol_is_not_silently_substituted(self):
+        # Refusing beats hedging the wrong instrument. An unmapped symbol must
+        # return "" so callers can block the action.
+        self.assertEqual(stock_perp_for("RZZZZUSDT"), "")
+        self.assertEqual(stock_perp_for(""), "")
+        self.assertEqual(stock_perp_for("nonsense"), "")
 
     def test_mapped_stock_perps_is_derived_from_the_map(self):
         perps = mapped_stock_perps()

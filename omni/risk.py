@@ -98,10 +98,21 @@ def evaluate(
 ) -> RiskState:
     rtoken_gross = 0.0
     rtoken_effective = 0.0
+    rtoken_detail = []
     for pos in rtoken_positions:
         mark = float(rtoken_marks.get(pos.symbol, 0.0))
-        rtoken_gross += float(pos.qty) * mark
-        rtoken_effective += effective_collateral_value(pos.qty, mark, haircut_pct)
+        gross = float(pos.qty) * mark
+        effective = effective_collateral_value(pos.qty, mark, haircut_pct)
+        rtoken_gross += gross
+        rtoken_effective += effective
+        # Per-position detail so a reader can see the mark and value each
+        # position contributed, rather than only the aggregate.
+        rtoken_detail.append({
+            **pos.to_dict(),
+            "mark_price": round(mark, 6),
+            "gross_value": round(gross, 4),
+            "effective_collateral": round(effective, 4),
+        })
 
     base_maintenance = sum(p.notional * p.mmr for p in futures_positions)
     base_equity = observed_effective_equity + rtoken_effective
@@ -188,7 +199,7 @@ def evaluate(
     }
 
     modelled = {
-        "rtoken_positions": [p.to_dict() for p in rtoken_positions],
+        "rtoken_positions": rtoken_detail,
         "rtoken_gross_value": round(rtoken_gross, 4),
         "haircut_pct": haircut_pct,
         "rtoken_effective_collateral": round(rtoken_effective, 4),

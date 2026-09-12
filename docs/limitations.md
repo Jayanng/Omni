@@ -19,10 +19,24 @@ venue-sourced. `/api/v3/market/position-tier` returns the official per-symbol
 tier ladder (notional band -> MMR and leverage cap), recorded in every cycle
 ledger record as `mmr_tiers_source`, and the cycle records which tier a new
 hedge would graduate into (`post_hedge_tier`). The per-position `mmr` the
-account API reports is used as-is. The model still does **not** reproduce
-Bitget's full liquidation engine, its account-specific collateral schedule
-beyond the published discount-rate ladder, or funding, fees inside the shock,
-or partial liquidation mechanics.
+account API reports is used as-is.
+
+**Also resolved (2026-09-12): the scenario shocks are no longer constants.**
+They are derived each cycle from the stressed instrument's own realised candle
+history (a lower-tail quantile of daily close-to-close returns), and the method,
+sample size, interval, lookback and endpoint are recorded in every cycle under
+`scenario_provenance`. Observed on 2026-09-12: rToken `-3.35%`, crypto
+`-2.36%`, replacing the previous fixed `-4%` / `-6%`.
+
+**Fail-toward-caution rule.** When a live read fails the model does not invent a
+value: an unreadable haircut means collateral is treated as unusable rather than
+guessed, an underivable shock stops the cycle rather than producing a stress
+result built on a guess, and an unmapped rToken refuses to hedge rather than
+shorting a guessed instrument.
+
+The model still does **not** reproduce Bitget's full liquidation engine, its
+account-specific collateral schedule beyond the published discount-rate ladder,
+or funding, fees inside the shock, or partial liquidation mechanics.
 
 Consequence: every "buffer", "liquidation shock" and "time to breach" style
 number is conditional on the stated inputs. The model withholds the
@@ -38,9 +52,11 @@ portfolio's rToken coin, selects the tier by the holding's USD value, and uses
 the venue's haircut instead of the previous explicit default. For rNVDA at the
 demo holding (~109K USDT) the venue discount rate is 0.95, i.e. a **5%
 haircut**, where the previous default input was 15%. The value and its source
-are recorded in every cycle record (`haircut_pct`, `haircut_source`), and the
-explicit `--haircut` flag remains as a fallback and override, with the ledger
-recording which was used. The engine no longer guesses this number.
+are recorded in every cycle record (`haircut_pct`, `haircut_source`,
+`haircut_verified`). The `--haircut` flag is now an explicit operator override
+only; it is never used silently as a fallback. If the venue read fails and no
+override is set, the collateral is treated as unusable (the cautious direction)
+and `haircut_verified` is false. The engine no longer guesses this number.
 
 Remaining nuance: the discount-rate ladder is the venue's published schedule
 for margin counting; an account-specific custom-collateral configuration could
@@ -96,7 +112,29 @@ defence in depth for limits the venue does not surface, so an order may still
 execute smaller than the recommendation in those rare cases, but the known
 limits are now queried upfront.
 
-## 8. Not claimed
+## 8. What is still assumed, and why
+
+Market inputs are live or venue-published. The following are not market data and
+are declared rather than derived:
+
+- **rToken quantities.** The demo account cannot hold rTokens, so holdings come
+  from the declared portfolio file. Prices, candles, order-book depth and the
+  collateral ratio are all live; the quantity is declared. Stated in the run
+  output and the ledger. Replaced by real balances on a live account.
+- **rToken spot fee rate** (0.05%): a published Bitget constant, cited in
+  `config.py`, not a market reading.
+- **Risk policy inputs** (attention threshold, risk budget, hedge cap): declared
+  configuration, overridable by env, recorded in every cycle record. These are
+  policy choices by definition, not observations.
+- **Session clock interpretation:** Bitget publishes window clocks with timeZone
+  "EST"; they are interpreted as New York local time so daylight saving is
+  handled by the tz database rather than hardcoded. Recorded as an assumption in
+  every session state.
+- **Hedge ratio:** the neutralising size is the rToken gross notional, which
+  assumes the mapped perpetual tracks the rToken one-for-one. A beta adjustment
+  is not modelled. Stated here so the sizing is not mistaken for a fitted model.
+
+## 9. Not claimed
 
 - No guarantee that an account avoids liquidation.
 - No claim to be first of a kind. The claim is narrow and qualified: within the public Bitget

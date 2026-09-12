@@ -123,7 +123,26 @@ Two mitigations now exist and they are complementary:
 
 Both behaviours are visible in the paper log.
 
-## 7. Agent and policy layer
+## 7. Scenario shocks derived from live history (added 2026-09-12)
+
+The stress scenario no longer uses fixed constants. Each cycle derives the shock
+from the instrument's own realised candle history.
+
+| Leg | Symbol | Method | Sample | Endpoint |
+|---|---|---|---|---|
+| rToken | the declared rToken, e.g. `RNVDAUSDT` | empirical 5% lower-tail quantile of daily close-to-close returns | 29 returns over 30 bars | `/api/v3/market/candles` |
+| crypto | largest crypto perpetual held, e.g. `BTCUSDT` | same method | 29 returns over 30 bars | `/api/v3/market/candles` |
+
+Observed values on 2026-09-12: rToken `-3.35%`, crypto `-2.36%`. These replace
+the previous fixed `-4%` / `-6%` defaults. The method string, sample size,
+interval, lookback and endpoint are recorded in every cycle record under
+`scenario_provenance`.
+
+If there is exposure and no usable history, the cycle **stops** rather than
+reporting a stress result built on a guess. If the book has no crypto
+perpetuals, no crypto shock is applied and that is stated.
+
+## 8. Agent and policy layer
 
 | Capability | Result |
 |---|---|
@@ -145,18 +164,18 @@ Both behaviours are visible in the paper log.
 including earlier cycles where venue size limits and model fallbacks were still being
 discovered. Nothing was deleted to make the run look cleaner.
 
-## 8. Unit tests
+## 9. Unit tests
 
 ```text
-Ran 52 tests - OK
+Ran 62 tests - OK
 ```
 
 Covers session classification (regular, pre-market, weekend tradable, weekend frozen, holiday),
 collateral math and depth-aware fills, the shock engine (including per-position shocks and the
 withheld liquidation figure), policy allowlist and veto semantics, venue parameter lookup and
-tier selection, symbol mapping, and ledger metrics.
+tier selection, symbol mapping, live-derived shock estimation, and ledger metrics.
 
-## 9. Hygiene
+## 10. Hygiene
 
 No live order, transfer or withdrawal was ever sent: every order in this
 repository is a demo (paper) order.

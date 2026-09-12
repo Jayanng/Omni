@@ -22,7 +22,7 @@ window.__OMNI_PAGES["/risk"] = {
           <div class="row"><span class="k">recorded</span><span class="v mono" id="pTs">\u2014</span></div>
           <div class="row"><span class="k">rToken positions</span><span class="v num" id="pRcount">\u2014</span></div>
           <div class="row"><span class="k">haircut source</span><span class="v" id="pHairSrc">\u2014</span></div>
-          <div class="row"><span class="k">scenario</span><span class="v" id="pScenario">\u2014</span></div>
+          <div class="row"><span class="k">shock method</span><span class="v" id="pScenario">\u2014</span></div>
           <h3 style="margin-top:20px">Positions contributing</h3>
           <table><thead><tr><th>symbol</th><th class="r">qty</th><th class="r">value</th></tr></thead>
           <tbody id="pBody"></tbody></table>
@@ -31,9 +31,10 @@ window.__OMNI_PAGES["/risk"] = {
       <div class="card">
         <h3>NOTE</h3>
         <div style="font-size:13px;color:var(--muted);line-height:1.7">
-          All values on this page are scenario estimates computed from the live portfolio, the published
-          rToken fee schedule, and the current session classification. They are not guarantees of liquidation
-          outcomes. Haircut values are modelled from the exchange fee schedule, not official Bitget rToken haircuts.
+          The collateral haircut is read live from the venue's published discount-rate schedule, the
+          maintenance-margin ladder comes from the venue's position-tier endpoint, and the scenario shocks are
+          derived from each instrument's realised candle history. The provenance card shows the source and the
+          verification state of each. These remain scenario estimates, not exchange guarantees.
         </div>
       </div>`;
   },
@@ -59,13 +60,25 @@ window.__OMNI_PAGES["/risk"] = {
       $("pTs").textContent = p.ts || "\u2014";
       const rpos = m.rtoken_positions || [];
       $("pRcount").textContent = rpos.length;
-      $("pHairSrc").textContent = "modelled from published rToken fee schedule";
-      $("pScenario").textContent = sc.rtoken_shock_pct != null ? (sc.rtoken_shock_pct * 100).toFixed(0) + "% rToken shock" : "\u2014";
+      const src = (m.haircut_source || "").trim();
+      const verified = m.haircut_verified === true;
+      $("pHairSrc").textContent = src || "\u2014";
+      $("pHairSrc").className = "v " + (verified ? "ok" : "warn");
+      const prov = (sc.provenance || {});
+      const rtokenProv = prov.rtoken || {};
+      $("pScenario").textContent = rtokenProv.method
+        ? rtokenProv.method + (rtokenProv.samples ? " (n=" + rtokenProv.samples + ")" : "")
+        : (sc.rtoken_shock_pct != null ? (sc.rtoken_shock_pct * 100).toFixed(0) + "% rToken shock" : "\u2014");
+      $("pHairSrc").title = src;
       const body = $("pBody"); body.innerHTML = "";
       if (rpos.length === 0) body.innerHTML = `<tr><td colspan="3" class="empty">no rToken positions in modelled state</td></tr>`;
       rpos.forEach(pos => {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td class="mono">${pos.symbol || "\u2014"}</td><td class="r num">${pos.total || pos.qty || "\u2014"}</td><td class="r num">${pos.value_usdt != null ? fmt(pos.value_usdt, 0) : "\u2014"}</td>`;
+        const qty = pos.qty != null ? pos.qty : (pos.total != null ? pos.total : null);
+        const gross = pos.gross_value != null ? fmt(pos.gross_value, 0) : "\u2014";
+        tr.innerHTML = `<td class="mono">${pos.symbol || "\u2014"}</td>` +
+          `<td class="r num">${qty != null ? qty : "\u2014"}</td>` +
+          `<td class="r num">${gross}</td>`;
         body.appendChild(tr);
       });
     }
