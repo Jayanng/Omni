@@ -35,19 +35,19 @@ stated here rather than hidden.
 
 | Field | Status | Source |
 |---|---|---|
-| Project Description, part 1 Thesis | Ready | [problem.md](problem.md) |
-| part 2 Target user and product value | Ready | [problem.md](problem.md), "Named user" |
-| part 3 Validation data and key metrics | Partly ready | [evidence.md](evidence.md), and `omni report` |
-| part 4 Progress | Ready | this file, plus the repository history |
-| part 5 Deliverables | Ready | this file, "Required materials" |
-| part 6 View on AI trading | Optional | to be written in the form |
-| Role of the LLM in your project | Ready to state | decision maker, see below |
-| Submission Materials Link | Ready | repository URL, demo log, paper log |
-| X Promotional Post Link | Outstanding | author action |
+| Project Description, part 1 Thesis | Ready | [problem.md](problem.md) and [submission.md](submission.md) Part 1 |
+| part 2 Target user and product value | Ready | [submission.md](submission.md) Part 2 |
+| part 3 Validation data and key metrics | Ready | [submission.md](submission.md) Part 3, and `omni report` |
+| part 4 Progress | Ready | [submission.md](submission.md) Part 4 |
+| part 5 Deliverables | Ready | [submission.md](submission.md) Part 5 |
+| part 6 View on AI trading | Ready | [submission.md](submission.md) Part 6 |
+| Role of the LLM in your project | Ready | [submission.md](submission.md), "Role of the LLM" |
+| Submission Materials Link | Ready | repository URL |
+| X Promotional Post Link | **Outstanding, author action** | [submission.md](submission.md) section 1 |
 | Track → Sub-theme | Ready | Agentic Trading → Cross-Asset Execution Agent |
 | University Name | Optional | author decision |
 | Apply for Demo Day | Optional | author decision |
-| Apply for K3 Token Subsidy | Optional | author decision |
+| Apply for K3 Token Subsidy | Optional | author decision, separate form |
 
 ### Role of the LLM (the honest answer)
 
