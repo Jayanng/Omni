@@ -1,7 +1,8 @@
 """Omni Actions Engine.
 
 Provides 1:1 parity between CLI terminal commands and Web UI actions:
-- doctor: runs 13 live verification checks across credentials, public feeds, demo account, and session classifier
+- doctor: runs 13 live verification checks across credentials, public feeds,
+  demo account, and session classifier
 - setup: constructs the demo book (BTCUSDT leveraged long position)
 - flatten: closes all open futures positions safely on Bitget demo
 - report: calculates ledger performance metrics and log file statistics
@@ -10,13 +11,11 @@ Provides 1:1 parity between CLI terminal commands and Web UI actions:
 """
 from __future__ import annotations
 
-import json
 import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from . import bitget_public as bp
@@ -78,7 +77,10 @@ def run_doctor() -> dict[str, Any]:
 
     # 1. Credentials
     c1_ok = bool(cfg.has_credentials)
-    c1_detail = "BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE present" if c1_ok else "Missing credentials"
+    c1_detail = (
+        "BITGET_API_KEY, BITGET_SECRET_KEY, BITGET_PASSPHRASE present"
+        if c1_ok else "Missing credentials"
+    )
     checks_dict["demo credentials present"] = (c1_ok, c1_detail)
     logs.append(f"  [{'PASS' if c1_ok else 'FAIL'}] demo credentials: {c1_detail}")
 
@@ -166,7 +168,8 @@ def run_doctor() -> dict[str, Any]:
     logs.append(f"[{_now()}] === PUBLIC DATA SOURCES ===")
     for name in [
         "public: reality market states", "public: reality stock info", "public: reality market calendar",
-        "public: reality dividends", "public: rToken ticker", "public: rToken candles", "public: rToken order book"
+        "public: reality dividends", "public: rToken ticker",
+        "public: rToken candles", "public: rToken order book"
     ]:
         ok, detail = results.get(name, (False, "error"))
         checks_dict[name] = (ok, detail)
@@ -184,9 +187,15 @@ def run_doctor() -> dict[str, Any]:
         stock_info = (bp.stock_info("RNVDAUSDT") or [{}])[0]
         calendar = bp.market_calendar("NVDA")
         state = classify(bp.market_states(), stock_info, calendar)
-        detail = f"regime={state.regime}, liquidity={state.liquidity_tier}, confidence={state.mark_confidence}"
+        detail = (
+            f"regime={state.regime}, liquidity={state.liquidity_tier}, "
+            f"confidence={state.mark_confidence}"
+        )
         checks_dict["session classify"] = (True, detail)
-        logs.append(f"  [PASS] regime={state.regime} liquidity={state.liquidity_tier} mark_confidence={state.mark_confidence}")
+        logs.append(
+            f"  [PASS] regime={state.regime} liquidity={state.liquidity_tier} "
+            f"mark_confidence={state.mark_confidence}"
+        )
     except Exception as exc:  # noqa: BLE001
         checks_dict["session classify"] = (False, str(exc)[:120])
         logs.append(f"  [FAIL] session classify: {str(exc)[:120]}")
@@ -258,7 +267,10 @@ def run_setup(symbol: str = "BTCUSDT", qty: str = "0.05") -> dict[str, Any]:
         logs.append(f"  current open positions: {len(positions)}")
         for p in positions:
             notional = float(p.get("total", 0) or 0) * float(p.get("markPrice", 0) or 0)
-            logs.append(f"    - {p.get('symbol')} {p.get('posSide')} total={p.get('total')} notional={notional:,.2f} USDT")
+            logs.append(
+                f"    - {p.get('symbol')} {p.get('posSide')} total={p.get('total')} "
+                f"notional={notional:,.2f} USDT"
+            )
 
         GLOBAL_TERMINAL_LOGS.extend(logs)
         return {
@@ -349,7 +361,10 @@ def run_report() -> dict[str, Any]:
         logs.append(f"  decisions made          : {metrics.get('decisions', 0)}")
         logs.append(f"  executions completed    : {metrics.get('executions_completed', 0)}")
         logs.append(f"  policy overrides        : {metrics.get('policy_overrides', 0)}")
-        logs.append(f"  risk violations         : {metrics.get('risk_violation_count', 0)} ({metrics.get('risk_violation_rate', 0):.1%})")
+        logs.append(
+            f"  risk violations         : {metrics.get('risk_violation_count', 0)} "
+            f"({metrics.get('risk_violation_rate', 0):.1%})"
+        )
         logs.append(f"  max drawdown            : {metrics.get('max_drawdown_pct', 0):.2%}")
         logs.append(f"  protective action share : {metrics.get('protective_action_share', 0):.1%}")
 
@@ -413,7 +428,10 @@ class WebDaemonManager:
             self._thread = threading.Thread(target=self._run_loop, daemon=True, name="OmniDaemonWorker")
             self._thread.start()
 
-            msg = f"[{_now()}] [DAEMON] Started 24/7 Autonomous Governor loop (interval={self.interval}s, execute={self.execute}, shock={self.shock})"
+            msg = (
+                f"[{_now()}] [DAEMON] Started 24/7 Autonomous Governor loop "
+                f"(interval={self.interval}s, execute={self.execute}, shock={self.shock})"
+            )
             GLOBAL_TERMINAL_LOGS.append(msg)
             return {"ok": True, "running": True, "interval": self.interval}
 
@@ -448,7 +466,9 @@ class WebDaemonManager:
             }
 
     def _run_loop(self):
-        GLOBAL_TERMINAL_LOGS.append(f"[{_now()}] [DAEMON] Autonomous thread started. Listening on Bitget book...")
+        GLOBAL_TERMINAL_LOGS.append(
+            f"[{_now()}] [DAEMON] Autonomous thread started. Listening on Bitget book..."
+        )
         while not self._stop_event.is_set():
             cycle_start = time.time()
             try:

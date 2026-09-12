@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import http.server
 import json
-import os
 import socketserver
 import threading
 import time
@@ -47,7 +46,13 @@ PORT = 8080
 # Multi-page console: static assets + page modules under omni/web/.
 # Served at "/", hash-routed client-side. No landing page, no marketing.
 _WEB_DIR = Path(__file__).resolve().parent / "web"
-_STATIC_TYPES = {".css": "text/css", ".js": "application/javascript", ".html": "text/html", ".png": "image/png", ".svg": "image/svg+xml"}
+_STATIC_TYPES = {
+    ".css": "text/css",
+    ".js": "application/javascript",
+    ".html": "text/html",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+}
 
 def _read_web_file(name: str) -> bytes | None:
     """Safely read a file from the web dir. Returns None if missing or unsafe."""
@@ -86,37 +91,40 @@ def _status_refresh_worker():
         try:
             cfg = load_config()
             client = DemoClient(cfg)
-            # pick the rToken symbol from the first rToken position, or fall back
-            # to the configured default hedge perp's mapped rToken
-            from .config import RTOKEN_TO_STOCK_PERP, DEFAULT_HEDGE_PERP
+            # Resolve the rToken symbol from the open book, then from the
+            # config mapping. No symbol is invented: if none resolves, the
+            # symbol-specific reads are skipped and the payload reports nulls,
+            # which the UI renders as em dashes.
+            from .config import (
+                DEFAULT_HEDGE_PERP,
+                RTOKEN_TO_STOCK_PERP,
+                rtoken_for_stock_perp,
+                stock_code_for,
+            )
             positions_raw = client.positions()
-            rtoken_sym = None
+            rtoken_sym = ""
             for p in (positions_raw if isinstance(positions_raw, list) else []):
                 sym = str(p.get("symbol", "")).upper()
                 if sym in RTOKEN_TO_STOCK_PERP:
                     rtoken_sym = sym
                     break
             if not rtoken_sym:
-                # reverse-map default hedge perp to its rToken
-                for r, perp in RTOKEN_TO_STOCK_PERP.items():
-                    if perp == DEFAULT_HEDGE_PERP:
-                        rtoken_sym = r
-                        break
-            if not rtoken_sym:
-                rtoken_sym = "RNVDAUSDT"  # last-resort fallback
+                rtoken_sym = rtoken_for_stock_perp(DEFAULT_HEDGE_PERP)
 
             with ThreadPoolExecutor(max_workers=6) as ex:
-                f_stock = ex.submit(bp.stock_info, rtoken_sym)
                 f_states = ex.submit(bp.market_states)
-                f_cal = ex.submit(bp.market_calendar, rtoken_sym.lstrip("R").replace("USDT", ""))
-                f_tick = ex.submit(bp.ticker, rtoken_sym)
                 f_pos = ex.submit(lambda: positions_raw)
                 f_overview = ex.submit(client.account_overview)
+                f_stock = f_tick = f_cal = None
+                if rtoken_sym:
+                    f_stock = ex.submit(bp.stock_info, rtoken_sym)
+                    f_cal = ex.submit(bp.market_calendar, stock_code_for(rtoken_sym))
+                    f_tick = ex.submit(bp.ticker, rtoken_sym)
 
-                stock = (f_stock.result() or [{}])[0]
+                stock = (f_stock.result() or [{}])[0] if f_stock is not None else {}
                 states = f_states.result()
-                cal = f_cal.result()
-                tick = f_tick.result()
+                cal = f_cal.result() if f_cal is not None else {}
+                tick = f_tick.result() if f_tick is not None else {}
                 pos = f_pos.result()
                 overview = f_overview.result()
 
@@ -135,7 +143,7 @@ def _status_refresh_worker():
             payload = {
                 "ok": True,
                 "session": session.to_dict(),
-                "rtoken_symbol": rtoken_sym,
+                "rtoken_symbol": rtoken_sym or None,
                 "rtoken_price": tick.get("lastPrice"),
                 "equity": assets.get("effEquity"),
                 "mmr": assets.get("mmr"),
@@ -200,7 +208,8 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
             ext = Path(name).suffix.lower()
             ctype = _STATIC_TYPES.get(ext, "application/octet-stream")
             self.send_response(200)
-            self.send_header("Content-Type", ctype + ("; charset=utf-8" if ext in (".css", ".js", ".html") else ""))
+            charset = "; charset=utf-8" if ext in (".css", ".js", ".html") else ""
+            self.send_header("Content-Type", ctype + charset)
             self.send_header("Connection", "close")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -306,7 +315,8 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
                 dec = cycle_result.get("decision") or {}
                 GLOBAL_TERMINAL_LOGS.append(
                     f"[{now_str}] $ omni decide --execute (shock={rtoken_shock:+.0%}) -> "
-                    f"Decision: {dec.get('action', 'HOLD')} | Executed: {cycle_result.get('execution', {}).get('executed')}"
+                    f"Decision: {dec.get('action', 'HOLD')} | "
+                    f"Executed: {cycle_result.get('execution', {}).get('executed')}"
                 )
                 res = {"ok": True, "result": cycle_result}
             except Exception as e:  # noqa: BLE001

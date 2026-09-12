@@ -76,10 +76,33 @@ From the Bitget UTA API documentation (`/docs/catalog/reality/trading`):
 This is the path Omni would use for live rToken execution. It is not exercised here because it
 requires a live account and real funds.
 
-## 5. Exchange size limits discovered by probing
+## 5. Venue-published risk parameters (added 2026-09-12)
 
-The demo venue enforces size limits that are **not** published in the instrument metadata
-(`maxOrderQty` reports 52000 for `NVDAUSDT`):
+Three Bitget endpoints publish the values the risk engine previously modelled.
+Each was probed live and is now queried on every cycle through
+`omni/venue_risk.py`, with the source string recorded in the ledger.
+
+| Endpoint | CLI action | Observed result | Used for |
+|---|---|---|---|
+| `GET /api/v3/market/discount-rate` | `market --action discountRate` | per-coin tiered collateral ratios; `rNVDA` discountRate `0.95` for the `0` tier, `0.94` from 500,000 USDT, decreasing in tiers | the rToken haircut: `0.95` discount means a **5% haircut**, replacing the previous 15% fallback |
+| `GET /api/v3/market/position-tier` | `market --action positionTier` | `NVDAUSDT` returns 11 bands, `mmr` 0.005 at tier 1 rising to 0.04, leverage 100 down to 15 | the official maintenance-margin ladder, and which tier a new hedge would graduate into |
+| `GET /api/v3/account/max-open-available` | `order --action maxOpen` | for `NVDAUSDT` sell with an existing short: `maxSellOpen 0.15`, `maxBuyOpen 45.73`, `available 93863.40` | the pre-trade size clamp: the venue's own answer for additional size, folding in tiers, margin and open positions |
+
+Behaviour when a read fails: the explicit input is used and the ledger records
+the fallback source. No value is invented.
+
+### Why this matters
+
+The haircut moved from a guessed 15% to the venue's published 5% for rNVDA at
+the demo tier. Every downstream buffer, loss percentage and risk-budget
+comparison shifts with it. The change is recorded in the ledger per cycle as
+`haircut_pct`, `haircut_source`, `haircut_input`, `mmr_tiers_source`,
+`post_hedge_tier`, `venue_order_cap_qty` and `venue_max_sell_open`.
+
+## 6. Exchange size limits
+
+The demo venue enforces size limits that are **not** fully published in the
+instrument metadata (`maxOrderQty` reports 52000 for `NVDAUSDT`):
 
 | Size | Result |
 |---|---|
@@ -88,10 +111,19 @@ The demo venue enforces size limits that are **not** published in the instrument
 | 45 contracts | rejected, `Order quantity cannot exceed the maximum for this level` |
 | 54.43 contracts | rejected, same |
 
-The executor therefore reduces the order size and retries until the venue accepts it, and logs
-each attempt. This behaviour is visible in the paper log.
+Two mitigations now exist and they are complementary:
 
-## 6. Agent and policy layer
+1. **Pre-clamp (preferred).** Before sending, size is clamped to the stricter of
+   the instrument caps and `max-open-available`, so the known limits are queried
+   rather than discovered by rejection. A clamp is recorded as a
+   `venue_pre_clamp` execution step.
+2. **Halve-and-retry (defence in depth).** If a size rejection still comes back,
+   the executor reduces and retries, logging every attempt. This covers limits
+   the venue does not surface.
+
+Both behaviours are visible in the paper log.
+
+## 7. Agent and policy layer
 
 | Capability | Result |
 |---|---|
@@ -113,17 +145,32 @@ each attempt. This behaviour is visible in the paper log.
 including earlier cycles where venue size limits and model fallbacks were still being
 discovered. Nothing was deleted to make the run look cleaner.
 
-## 7. Unit tests
+## 8. Unit tests
 
 ```text
-Ran 31 tests - OK
+Ran 52 tests - OK
 ```
 
 Covers session classification (regular, pre-market, weekend tradable, weekend frozen, holiday),
 collateral math and depth-aware fills, the shock engine (including per-position shocks and the
-withheld liquidation figure), policy allowlist and veto semantics, and ledger metrics.
+withheld liquidation figure), policy allowlist and veto semantics, venue parameter lookup and
+tier selection, symbol mapping, and ledger metrics.
 
-## 8. Hygiene
+## 9. Hygiene
 
-All demo orders and positions created during probing were closed. The demo account ends with no
-open orders and no open positions. No live order, transfer or withdrawal was ever sent.
+No live order, transfer or withdrawal was ever sent: every order in this
+repository is a demo (paper) order.
+
+The demo book is currently **open by design**, because the paper trading log
+requires a live book to govern:
+
+```text
+open positions : BTCUSDT long 0.05, NVDAUSDT short 45.59
+open orders    : 0
+```
+
+Probe orders created during capability testing were closed as they were
+completed. The two positions above are the intentional demo book that the
+governor monitors; they are demo balances, not real funds. See
+[limitations.md](limitations.md) item 5 on the difference between this demo
+book and a real account.

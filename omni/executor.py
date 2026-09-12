@@ -153,11 +153,15 @@ def execute(action: str, params: dict, client: DemoClient, marks: dict,
         clamp_note = ""
         pre_clamp = qty
         if cap > 0 and qty > cap:
-            clamp_note = f"clamped to instrument cap: {qty:g} -> {cap:g} {hedge_symbol} (instruments maxOrderQty/maxMarketOrderQty)"
+            clamp_note = (
+                f"clamped to instrument cap: {qty:g} -> {cap:g} {hedge_symbol} "
+                f"(instruments maxOrderQty/maxMarketOrderQty)"
+            )
             qty = cap
         if venue_max_sell > 0 and qty > venue_max_sell:
             clamp_note = (clamp_note + "; " if clamp_note else "") + (
-                f"clamped to venue max-open: {qty:g} -> {venue_max_sell:g} {hedge_symbol} (max-open-available)"
+                f"clamped to venue max-open: {qty:g} -> {venue_max_sell:g} "
+                f"{hedge_symbol} (max-open-available)"
             )
             qty = venue_max_sell
         qty = math.floor(qty * 100) / 100.0

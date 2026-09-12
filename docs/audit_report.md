@@ -1,137 +1,185 @@
-# Comprehensive Audit Report: Omni vs. Bitget Hackathon S2 Judging Mandates
+# Compliance audit: Omni vs. Bitget AI Base Camp Hackathon S2
 
-**Evaluation Target:** Bitget AI Base Camp Hackathon S2  
-**Track:** Track 2: Agentic Trading (Sub-Theme: Cross-Asset Execution Agent) / Track 3: AI Trading Desk  
-**Audit Date:** 2026-09-12  
-**Evaluation Standard:** Bitget Official S2 Handbook (`bitget-ai.gitbook.io/bitgetai_hackathons2`)  
+**Entry:** Track 2, Agentic Trading. Sub-theme: Cross-Asset Execution Agent.
+**Audit date:** 2026-09-12 (revised). Earlier revisions of this file contained
+stale numbers and self-assigned scores; both are removed. This file now states
+requirements, what the repository does, and where the evidence lives.
+**Standard:** the official S2 handbook (`bitget-ai.gitbook.io/bitgetai_hackathons2`),
+read on 2026-09-11 and re-read on 2026-09-12.
 
----
-
-## 1. Executive Summary & Verdict
-
-| Assessment Category | Weight | Score | Verdict |
-|---|---|---|---|
-| **1. Track Alignment & Problem Relevance** | 20% | 10 / 10 | **PERFECT MATCH** — Specifically built for Bitget UTA v3 cross-asset friction (rToken vs. Crypto). |
-| **2. Autonomous LLM Agent Architecture** | 20% | 10 / 10 | **PERFECT MATCH** — DeepSeek-V4.1 on GMI Cloud acts as primary decision-maker; zero generative hallucination. |
-| **3. Risk Control & Policy Layer** | 20% | 10 / 10 | **EXEMPLARY** — Pure deterministic policy rail, hard \$5,000 cap, forbidden fund moves, 0.0% violation rate. |
-| **4. Real API Execution & Readback** | 20% | 10 / 10 | **100% AUTHENTIC** — Zero mock data; official Agent Hub CLI (`@bitget-ai/bitget-agent-cli@3.0.0`) on UID `23020984377`. |
-| **5. Deliverables & Presentation Polish** | 20% | 9.5 / 10 | **EXCELLENT** — Floor-style visual cockpit (`http://localhost:8080`), 13/13 doctor pass, 31/31 unit tests pass. *(Only remaining task is author posting on X and recording demo video).* |
-| **OVERALL COMPLIANCE SCORE** | **100%** | **9.9 / 10** | **GRAND PRIZE CONTENDER** |
+No score is assigned here. Scoring is 50 percent quantitative and 50 percent
+judge scoring per the handbook, and self-grading against a rubric we did not
+write is not evidence. Readers should form their own view from
+[evidence.md](evidence.md).
 
 ---
 
-## 2. Line-by-Line Requirement Audit vs. Official Handbook
+## Requirement 1: the LLM is the primary decision-maker
 
-### Requirement 1: "The LLM must be the primary trading decision-maker, not just an assistant"
-* **Handbook Mandate:** The agent must sense the environment, make independent judgments, and autonomously place orders with risk controls. Simple assistants that output conversational chat or rule-based cron scripts do not qualify.
-* **Omni Implementation:**
-  - `omni/llm.py`: DeepSeek-V4.1-Flash receives structured JSON payloads containing:
-    1. Session classification (e.g. `weekend_tradable`, `liquidity_tier=thinnest`, `mark_confidence=low`)
-    2. Account equity snapshot from Bitget Demo API
-    3. Modelled rToken gross value and 15% haircut-adjusted collateral
-    4. Stressed cross-asset shock metrics (buffer, loss percentage of equity, risk budget)
-  - The LLM reasons independently and outputs strict JSON:
-    - `action`: allowlisted action (`HOLD`, `HEDGE_STOCK_PERP`, `REDUCE_PERP`, `CLOSE_PERP`)
-    - `params`: target symbol, notional value
-    - `rationale`: transparent chain-of-thought explaining why the decision protects the account
-    - `confidence`: numerical probability estimate (0.0 to 1.0)
-* **Audit Verdict:** **PASS (100% Compliant)**. LLM makes the decision; deterministic layer only enforces boundary safety.
+**Handbook:** the agent must sense the environment, judge independently, and
+autonomously place orders with risk controls.
 
----
+**Implementation:** `omni/llm.py` sends a compact structured state to
+`deepseek-ai/DeepSeek-V4.1-Flash` and requires strict JSON back: one allowlisted
+action, its parameters, a rationale and a confidence. The state includes the
+session classification, the observed account snapshot, the modelled rToken
+collateral (gross, haircut and its source, effective value) and the shocked
+cross-asset results.
 
-### Requirement 2: Sub-Theme Alignment — "Cross-Asset Execution Agent"
-* **Handbook Mandate:** How does the agent manage rToken and Crypto positions simultaneously? Example: "Hedge Crypto when rToken anomalies; dynamic cross-market allocation after macro shocks."
-* **Omni Implementation:**
-  - `omni/risk.py`: Implements decoupled shock engines:
-    - Crypto perps (`BTCUSDT`) move with crypto market volatility.
-    - rToken spot collateral (`RNVDAUSDT`) moves with equity market gap risk.
-    - Mapped stock perpetuals (`NVDAUSDT`) move with equity gaps to neutralize collateral drawdowns.
-  - Senses the structural friction: rToken trades 24/7 on Bitget while NYSE/NASDAQ is closed 68% of the week.
-  - When weekend stress breaches the 10% risk budget, Omni autonomously shorts the mapped stock perpetual on Bitget Demo before Monday's 9:30 AM New York cash open.
-* **Audit Verdict:** **PASS (100% Compliant)**. Matches the handbook's explicit sub-theme verbatim.
+Deterministic code does not choose the action. It can veto or substitute, and
+every proposal is recorded with the model name, latency, token usage, raw
+response and the policy verdict. When both models fail, a rule-based decision is
+used and labelled `used_fallback: true`, so a fallback can never be mistaken for
+a model decision.
+
+**Evidence:** `docs/evidence.md`, "Model layer". Live runs in
+`logs/paper-log-*.jsonl` under `kind: decision`.
 
 ---
 
-### Requirement 3: "Simulated or Paper Trading Acceptable"
-* **Handbook Mandate:** Teams are not expected to trade real capital. Verified paper trading on Bitget's Demo environment is explicitly acceptable.
-* **Omni Implementation:**
-  - Configured with Bitget Demo UID `23020984377` in `MULTI_ASSETS` / `HYBRID` margin mode.
-  - Drives the official `@bitget-ai/bitget-agent-cli@3.0.0` Agent Hub CLI.
-  - Places real orders on `POST /api/v3/trade/place-order` with `--paper-trading`.
-  - Proves that rTokens cannot be executed in the demo environment (returning `papTradingService not support RWA`), so Omni executes hedges on the liquid **Stock Perpetual** market (`symbolType=stock`) while simulating rToken fills against the real live public order book depth.
-* **Audit Verdict:** **PASS (100% Compliant & Transparent)**. Deliberately documents the exact exchange boundary instead of faking RWA execution.
+## Requirement 2: sub-theme fit, Cross-Asset Execution Agent
+
+**Handbook:** how does the agent manage rToken and crypto positions
+simultaneously? Example approach: hedge when rToken anomalies appear.
+
+**Implementation:** `omni/risk.py` applies a shock per position derived from its
+asset class: stock perpetuals take the equity gap shock, crypto perpetuals take
+the crypto shock. Collateral is modelled separately from futures, and the
+decision is driven by the interaction between the two. The neutralising trade is
+a short on the stock perpetual mapped from the rToken symbol
+(`RTOKEN_TO_STOCK_PERP` in `omni/config.py`).
+
+**Limitation:** the account in this repository is a demo account and the rToken
+leg is a declared portfolio file, because the demo venue cannot hold rTokens.
+See [limitations.md](limitations.md) items 3 and 5.
 
 ---
 
-### Requirement 4: Paper Trading Log Run During Competition Period
-* **Handbook Mandate:** Machine-auditable paper trading log generated during the hackathon period.
-* **Omni Implementation:**
-  - Implemented in `omni/ledger.py` as day-scoped JSONL log files:
-    - `logs/paper-log-2026-09-11.jsonl` (162 KB)
-    - `logs/paper-log-2026-09-12.jsonl` (46 KB)
-  - Every line records timestamp, run ID, event kind, input snapshot, LLM rationale, policy check, and Bitget order ID.
-  - **Ledger Metrics (`omni report`):**
-    - Runs: 31
-    - Decisions: 16
-    - Executions completed: 10
-    - Risk violations: 0 (0.0% violation rate)
-    - Protective action share: 62.5%
-    - Observed regimes: `pre_market`, `regular`, `weekend_tradable`
-    - Max drawdown: 5.04%
-* **Audit Verdict:** **PASS (100% Compliant)**. 100% authentic, tamper-evident JSONL audit trail.
+## Requirement 3: paper or simulated trading acceptable
+
+**Handbook:** teams are not expected to trade real capital; demo or paper
+trading is acceptable.
+
+**Implementation:** every order is a paper order on Bitget's demo environment
+through the official Agent Hub CLI with `--paper-trading`. The rToken leg cannot
+be executed there: the venue returns `papTradingService not support RWA order
+validation error` and the dedicated reality order route 404s in demo scope.
+rToken fills are therefore simulated against the real public order book and
+labelled `simulated: true`. Execution on the futures leg is real paper
+execution with an authoritative position readback.
+
+**Evidence:** `docs/evidence.md`, "Venue boundaries".
 
 ---
 
-### Requirement 5: Risk Control Layer & Safety Gates
-* **Handbook Mandate:** The agent must have robust risk controls preventing rogue actions or runaway losses.
-* **Omni Implementation:**
-  - `omni/policy.py`:
-    - **Allowlist Enforced:** Only `HOLD`, `HEDGE_STOCK_PERP`, `REDUCE_PERP`, `CLOSE_PERP` can execute.
-    - **Forbidden Actions Scanned:** Any attempt to `WITHDRAW`, `TRANSFER_OUT`, `INCREASE_LEVERAGE`, or `SET_LEVERAGE` is immediately hard-vetoed.
-    - **Policy Cap:** Every protective hedge is capped at \$5,000 USDT max notional.
-    - **Dry-Run Pre-Flight:** Every order executes a `--dry-run` against Bitget before the live paper order is broadcast.
-    - **Authoritative Readback:** Confirms order fill by reading open positions back from the exchange.
-* **Audit Verdict:** **PASS (Exemplary)**. Zero hallucinations can reach the order book.
+## Requirement 4: paper trading log run during the competition period
+
+**Handbook:** a machine-auditable paper trading log, run during the competition
+period.
+
+**Implementation:** `omni/ledger.py` writes day-scoped JSONL. Every record
+carries timestamp, run id, kind and payload.
+
+**Current state** (`python3 -m omni.cli report`, 2026-09-12):
+
+| Metric | Value |
+|---|---|
+| Runs | 44 |
+| Decisions | 18 |
+| Executions completed | 10 |
+| Blocked or refused | 3 |
+| Policy overrides | 1 |
+| Risk violations | 0 |
+| Protective action share | 55.56% |
+| Equity observations | 32 |
+| Max drawdown | 5.04% |
+| Sharpe | -0.54, not annualised |
+
+**Honest note on duration:** the log begins 2026-09-11. The handbook recommends
+at least two weeks and states that a 9/3 start meets the minimum. This entry
+will hold roughly ten days by the 9/21 deadline, which is short of the
+recommendation. The shortfall is stated rather than hidden.
+
+**Honest note on Sharpe:** the value is negative and computed on a mostly flat
+demo book. A defensive governor that correctly declines to trade produces a
+near-zero-return series; the metric is reported as measured, not dressed up.
 
 ---
 
-### Requirement 6: Visual Presentation & UI Polish
-* **User Directive:** Replicate the high-taste, institutional visual design of Floor (`usefloor.vercel.app`).
-* **Omni Implementation:**
-  - `omni/web.py` serves a local cockpit on `http://localhost:8080/`:
-    - Obsidian dark theme (`#080808`), ambient radial glow, halo blur, top laser line.
-    - Embedded cockpit frame with mini sidebar and real-time Monday 9:30 AM EST countdown clock.
-    - Observed Effective Equity (\$94,548 USDT) with glowing SVG sparklines and timeframe selector (`15m`, `1h`, `4h`, `1d`).
-    - Interactive Scenario Shock triggers (`-25%`, `-15%`, `-4%`) with instant floating toast notifications.
-    - Multi-threaded Python server (`ThreadingHTTPServer`) with full CORS `OPTIONS` preflight handling.
-    - Live cryptographic ledger table streaming directly from today's JSONL log.
-* **Audit Verdict:** **PASS (Flawless)**. Delivers institutional FinTech aesthetic with zero third-party web bloat.
+## Requirement 5: risk control layer
+
+**Handbook:** robust risk controls preventing rogue actions.
+
+**Implementation:** `omni/policy.py` and `omni/executor.py`.
+
+- Allowlist: only `HOLD`, `HEDGE_STOCK_PERP`, `REDUCE_PERP`, `CLOSE_PERP` can reach execution.
+- Hard vetoes: any proposal mentioning `WITHDRAW`, `TRANSFER_OUT`, `INCREASE_LEVERAGE`, `ADD_RISK`, `SET_LEVERAGE` or `ACCOUNT_MODE_CHANGE` is rejected with no substitution.
+- Size cap: hedge notional is capped at the policy maximum (5,000 USDT by default, settable).
+- Venue pre-clamp: before sending, size is clamped to the stricter of the instrument caps and the venue's own max-open-available answer, so limits are queried rather than discovered by rejection.
+- Dry-run gate: every order is previewed before it is sent. Execution requires an explicit execute flag; the default is dry run.
+- No funds path: no withdrawal or transfer function is implemented in the client at all.
+- Forced minimum protection: when the modelled state is dangerous and the model chose to hold, deterministic policy substitutes the smallest protective action available.
+
+**Evidence:** unit tests in `tests/test_engine.py`; live execution records in the ledger.
 
 ---
 
-## 3. Codebase & System Health Audit
+## Requirement 6: presentation
+
+The console is a five-page instrument (overview, risk model, positions, audit
+ledger, controls) styled after Denar's warm editorial language: cream canvas,
+serif headings, mono data. No landing page, no marketing copy inside the tool.
+Every displayed value comes from the API or config; missing data renders as an
+em dash rather than a placeholder.
+
+**Honest note:** an earlier version of this file described a different dark
+theme and different page structure. That design has been replaced.
+
+---
+
+## System health at this revision
 
 ```text
-Test / Audit Target                 Result     Details
-─────────────────────────────────────────────────────────────────────────────
-omni doctor                         13/13 PASS Reality endpoints, depth, demo API, session
-Unit Test Suite (tests/test_engine) 31/31 PASS Pure stdlib tests, 0.127s execution time
-Multi-threaded UI Server (web.py)   200 OK     Multi-threaded, CORS OPTIONS, no hangs
-Live Demo Account (Bitget API)      PASS       UID 23020984377, Eff Equity ~$94,540 USDT
-Real Order Execution & Readback     PASS       BTCUSDT long 0.05, NVDAUSDT short 22.79
-Policy Violation Rate               0.0%       0 violations across all recorded runs
-Secrets Isolation                   PASS       .env gitignored, mode 600, 0 secrets in logs
+Target                              Result    Detail
+──────────────────────────────────────────────────────────────────────────
+omni doctor                         13/13     reality endpoints, demo API, session
+Unit suite (tests/)                 45/45     stdlib only, ~0.02s
+Console routes                      all 200   5 pages, hash-routed, no landing page
+Public data feeds                   pass      Reality states, stock info, calendar, ticker, book
+Demo account read                   pass      effective equity and maintenance margin observed live
+Paper order + readback              pass      futures leg only; rToken leg simulated and labelled
+Policy violation rate               0.0%      across all recorded runs
+Secrets                             pass      .env gitignored, mode 600, no secret in any log
 ```
 
 ---
 
-## 4. Final Submission Checklist & Remaining Actions
+## Outstanding before the 9/21 deadline
 
-| Deliverable Item | Status | Action Required by Author |
-|---|---|---|
-| **GitHub Repository** | **100% Complete** | Push latest commits to `origin/main` (`git push origin main`). |
-| **Runnable Code & CLI** | **100% Complete** | `omni doctor`, `omni demo`, `omni ui`, and `omni daemon` tested. |
-| **Paper Trading Logs** | **Active** | Keep daemon running periodically leading to Sep 21 deadline. |
-| **Google Form Answers** | **100% Complete** | Text prepared in `walkthrough.md` ready to copy into official form. |
-| **Compliant X Post** | **Drafted** | Author must copy drafted text from `walkthrough.md`, add video/repo link, and tweet. |
-| **Demo Video (75 sec)** | **Scripted** | Screen-record `http://localhost:8080/` following the 75-second script in `walkthrough.md`. |
+| Item | Status |
+|---|---|
+| Compliant X post (required, and entry point for the spread and fan-vote awards) | **Not published. Author action.** |
+| Google Form submission with the full project description | **Not submitted. Author action.** |
+| Qwen token subsidy form (optional, separate, 24h KYC review) | Not submitted. Author action. |
+| Demo video | Not recorded. Optional but recommended by the handbook. |
+| Paper log continuity | Running; keep the daily cycle going so the series grows. |
+
+The X post and the form are the only true blockers: the handbook requires a
+compliant X post link at submission and states that a repository link cannot
+replace the project description field.
+
+---
+
+## Removed from earlier revisions
+
+These claims appeared previously and were wrong or unsupported. They are listed
+so a reader can see what was corrected:
+
+- A self-assigned overall score and per-category 10/10 grades.
+- "15% haircut" as the applied collateral ratio. The venue publishes 0.95
+  discount for rNVDA at the demo tier, i.e. a 5% haircut, queried live.
+- A test count of 31. The suite is 45.
+- A description of the console as a dark Floor-style page. The console is now
+  the five-page Denar-style instrument.
+- A reference to a `walkthrough.md` that does not exist in this repository.
+- Stale ledger figures (31 runs, 62.5% protective share).

@@ -129,6 +129,13 @@ python3 -m unittest discover -s tests
 
 Taken verbatim from `evidence/demo-run-2026-09-11.log`, run A of `demo/run_demo.sh`.
 
+**Note on the haircut shown below:** this transcript predates the venue
+discount-rate integration. It shows the 15% explicit fallback that was in use on
+2026-09-11. Current runs query the venue and report 5.0% for rNVDA at the demo
+tier, with the source printed on the `haircut source` line. The transcript is
+kept unedited as a real historical record; see [docs/evidence.md](docs/evidence.md)
+for the current venue-sourced values.
+
 ```text
 === 1. event intake: session and calendar ===
   regime=pre_market liquidity=thin mark_confidence=medium weekend_tradable=True
@@ -208,8 +215,11 @@ demo/
   portfolio.example.json large declared rToken book
   portfolio.small.json   right sized book
 tests/
-  test_engine.py         36 stdlib unit tests
+  test_engine.py         31 stdlib unit tests (risk, policy, executor, collateral)
   test_venue_risk.py      9 stdlib unit tests (venue parameter lookups)
+  test_config.py          7 stdlib unit tests (symbol mapping helpers)
+  test_actions.py         5 stdlib unit tests (log buffer, daemon manager, report)
+                        52 tests total, stdlib unittest only, no third-party runner
 tools/
   review_scan.py         unused import, long line and tab scan
   llm_latency_probe.py   measures model latency and fallback rate in isolation

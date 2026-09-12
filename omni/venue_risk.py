@@ -101,7 +101,10 @@ def query_haircut(client: DemoClient, coin: str, holding_value_usdt: float) -> H
             haircut_pct=1.0 - discount,
             discount_rate=discount,
             tier_start_usdt=_to_float(band.get("tierStartValue")),
-            source=f"venue /api/v3/market/discount-rate coin={coin} tierStart={band.get('tierStartValue')}USDT discountRate={discount}",
+            source=(
+                f"venue /api/v3/market/discount-rate coin={coin} "
+                f"tierStart={band.get('tierStartValue')}USDT discountRate={discount}"
+            ),
         )
     return None
 

@@ -22,7 +22,7 @@ from . import llm as llm_mod
 from . import metrics as metrics_mod
 from .bitget_demo import DemoClient, DemoCliError
 from .collateral import RTokenPosition
-from .config import ROOT, load_config, stock_perp_for
+from .config import ROOT, load_config, mapped_stock_perps, stock_perp_for
 from .executor import execute
 from .ledger import Ledger
 from .venue_risk import query_haircut
@@ -250,7 +250,7 @@ def run_cycle(execute_action: bool, args) -> int:
         print(f"  {symbol}: last={marks[symbol]}")
 
     hedge_marks = {}
-    for sym in ("NVDAUSDT", "TSLAUSDT", "AAPLUSDT", "GOOGLUSDT"):
+    for sym in mapped_stock_perps():
         try:
             tick = client.call(
                 ["market", "--action", "tickers", "--category", "USDT-FUTURES", "--symbol", sym],

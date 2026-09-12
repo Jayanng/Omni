@@ -1,4 +1,4 @@
-import ast, sys
+import ast
 from pathlib import Path
 
 def check(path: Path):
@@ -11,6 +11,10 @@ def check(path: Path):
                 name = a.asname or a.name.split('.')[0]
                 imported[name] = node.lineno
         elif isinstance(node, ast.ImportFrom):
+            # __future__ imports are compiler directives, not names that get
+            # referenced, so they are never "unused".
+            if (node.module or "") == "__future__":
+                continue
             for a in node.names:
                 if a.name == '*':
                     continue
@@ -27,7 +31,11 @@ def check(path: Path):
     if unused:
         print(f"{path}: unused imports -> " + ", ".join(f"{k} (line {v})" for k, v in unused.items()))
 
-files = sorted(Path('omni').glob('*.py')) + sorted(Path('tests').glob('*.py'))
+files = (
+    sorted(Path('omni').glob('*.py'))
+    + sorted(Path('tests').glob('*.py'))
+    + sorted(Path('tools').glob('*.py'))
+)
 for f in files:
     check(f)
 print("scan complete over", len(files), "files")

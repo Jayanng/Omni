@@ -104,7 +104,8 @@ class TestMmrLadder(unittest.TestCase):
 
 class TestOrderCaps(unittest.TestCase):
     def test_effective_cap_is_stricter_value(self):
-        self.assertAlmostEqual(effective_order_cap({"max_order_qty": 52000, "max_market_order_qty": 9500}), 9500)
+        caps = {"max_order_qty": 52000, "max_market_order_qty": 9500}
+        self.assertAlmostEqual(effective_order_cap(caps), 9500)
         self.assertEqual(effective_order_cap({}), 0.0)
         self.assertEqual(effective_order_cap({"max_order_qty": 0, "max_market_order_qty": 0}), 0.0)
 

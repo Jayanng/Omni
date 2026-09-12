@@ -18,13 +18,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import bitget_public as bp
-from . import collateral as coll
 from . import executor as exec_mod
 from . import llm as llm_mod
-from . import metrics as metrics_mod
-from .bitget_demo import DemoClient, DemoCliError
+from .bitget_demo import DemoClient
 from .collateral import RTokenPosition
-from .config import ROOT, load_config, stock_perp_for
+from .config import ROOT, load_config, mapped_stock_perps, stock_perp_for
 from .ledger import Ledger
 from .venue_risk import (
     effective_order_cap,
@@ -37,7 +35,7 @@ from .venue_risk import (
 
 DEFAULT_PORTFOLIO = ROOT / "demo" / "portfolio.example.json"
 from .policy import PolicyConfig, validate
-from .risk import FuturesPosition, evaluate, shock_for
+from .risk import FuturesPosition, evaluate
 from .session import classify
 
 
@@ -101,7 +99,10 @@ class OmniDaemon:
         self._iteration += 1
         now_str = self._now_iso()
         print(f"\n=======================================================")
-        print(f"[{now_str}] [DAEMON CYCLE #{self._iteration}] Mode={'EXECUTE' if self.d_cfg.execute else 'MONITOR'}")
+        print(
+            f"[{now_str}] [DAEMON CYCLE #{self._iteration}] "
+            f"Mode={'EXECUTE' if self.d_cfg.execute else 'MONITOR'}"
+        )
         print(f"=======================================================")
 
         # 1. Session & Calendar Intake
@@ -121,7 +122,10 @@ class OmniDaemon:
             })
         self._last_regime = session.regime
 
-        print(f"  Session: {session.regime} (liquidity: {session.liquidity_tier}, confidence: {session.mark_confidence})")
+        print(
+            f"  Session: {session.regime} (liquidity: {session.liquidity_tier}, "
+            f"confidence: {session.mark_confidence})"
+        )
 
         # 2. Market Data
         portfolio_data = {}
@@ -141,9 +145,10 @@ class OmniDaemon:
             except Exception as e:
                 print(f"  [WARN] Failed fetching ticker for {sym}: {e}")
 
-        # Tradable stock perpetual reference
+        # Tradable stock perpetual reference. Derived from the rToken mapping
+        # in config so a portfolio change does not need a code edit here.
         hedge_marks = {}
-        for sym in ("NVDAUSDT", "TSLAUSDT", "AAPLUSDT", "GOOGLUSDT"):
+        for sym in mapped_stock_perps():
             try:
                 tick = self.client.call(
                     ["market", "--action", "tickers", "--category", "USDT-FUTURES", "--symbol", sym],
@@ -163,7 +168,10 @@ class OmniDaemon:
         raw_positions = self.client.positions()
         stock_perps = self._stock_perp_symbols()
 
-        print(f"  Account: Equity = {eff_equity:,.2f} USDT | Margin Ratio = {margin_ratio:.4f} | Open Positions = {len(raw_positions)}")
+        print(
+            f"  Account: Equity = {eff_equity:,.2f} USDT | "
+            f"Margin Ratio = {margin_ratio:.4f} | Open Positions = {len(raw_positions)}"
+        )
 
         futures = []
         for p in raw_positions:
@@ -251,7 +259,11 @@ class OmniDaemon:
             rd["modelled"]["venue_max_sell_open"] = max_open.get("maxSellOpen")
             rd["modelled"]["venue_max_open_source"] = max_open.get("source")
 
-        print(f"  Risk Model: Shocked Buffer = {rd['results']['shocked_buffer_usdt']:,.2f} USDT | Breach = {rd['results']['breach']} | Needs Attention = {rd['results']['needs_attention']}")
+        print(
+            f"  Risk Model: Shocked Buffer = {rd['results']['shocked_buffer_usdt']:,.2f} USDT | "
+            f"Breach = {rd['results']['breach']} | "
+            f"Needs Attention = {rd['results']['needs_attention']}"
+        )
 
         # 5. LLM Decision (Only when attention is needed or periodically)
         decision = llm_mod.decide(
@@ -309,7 +321,11 @@ class OmniDaemon:
             },
             "decision": decision.to_dict(),
             "policy": policy.to_dict(),
-            "execution": exec_result.to_dict() if exec_result else {"action": policy.action, "executed": False},
+            "execution": (
+                exec_result.to_dict()
+                if exec_result
+                else {"action": policy.action, "executed": False}
+            ),
         }
         self.ledger.record("daemon_cycle", cycle_record)
 
@@ -325,7 +341,10 @@ class OmniDaemon:
         print("===============================================================")
         print(f"  PID               : {os.getpid()}")
         print(f"  Interval          : {self.d_cfg.interval} seconds")
-        print(f"  Execution Mode    : {'LIVE PAPER TRADING' if self.d_cfg.execute else 'MONITOR ONLY (DRY-RUN)'}")
+        print(
+            "  Execution Mode    : "
+            f"{'LIVE PAPER TRADING' if self.d_cfg.execute else 'MONITOR ONLY (DRY-RUN)'}"
+        )
         print(f"  Portfolio File    : {self.d_cfg.portfolio_path}")
         print(f"  Ledger Directory  : {self.app_cfg.log_dir}")
         print(f"  LLM Endpoint      : {self.app_cfg.llm_base_url} ({self.app_cfg.llm_model})")
@@ -352,7 +371,10 @@ class OmniDaemon:
                 })
 
             if self.d_cfg.max_iterations and self._iteration >= self.d_cfg.max_iterations:
-                print(f"\n[DAEMON] Reached maximum requested iterations ({self.d_cfg.max_iterations}). Stopping.")
+                print(
+                    f"\n[DAEMON] Reached maximum requested iterations "
+                    f"({self.d_cfg.max_iterations}). Stopping."
+                )
                 break
 
             # Sleep in 1-second chunks for responsive SIGINT handling
@@ -376,7 +398,11 @@ def main():
     parser.add_argument("--max-iterations", type=int, default=None, help="Stop after N cycles (optional)")
     parser.add_argument("--portfolio", default=str(DEFAULT_PORTFOLIO), help="Path to portfolio JSON")
     parser.add_argument("--rtoken", default="RNVDAUSDT", help="rToken symbol to monitor")
-    parser.add_argument("--haircut", type=float, default=0.15, help="rToken collateral haircut (default: 0.15)")
+    parser.add_argument(
+        "--haircut", type=float, default=0.15,
+        help="fallback haircut, used only when the venue discount-rate read fails; "
+             "the venue value is preferred when available",
+    )
     parser.add_argument("--rtoken-shock", type=float, default=-0.04, help="Scenario rToken shock")
     parser.add_argument("--crypto-shock", type=float, default=-0.06, help="Scenario crypto shock")
     parser.add_argument("--max-hedge-notional", type=float, default=5000.0, help="Policy cap on hedge size")

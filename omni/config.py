@@ -64,6 +64,38 @@ def stock_perp_for(rtoken_symbol: str) -> str:
         return symbol
     return DEFAULT_HEDGE_PERP
 
+
+def mapped_stock_perps() -> tuple:
+    """Every stock perpetual the mapping knows about, derived from the map.
+
+    Callers that need a set of hedge symbols take it from here so the list is
+    defined once, in config, instead of being re-typed at each call site.
+    """
+    return tuple(sorted(set(RTOKEN_TO_STOCK_PERP.values())))
+
+
+def rtoken_for_stock_perp(stock_perp: str) -> str:
+    """Reverse lookup: the rToken symbol whose hedge is ``stock_perp``.
+
+    Returns an empty string when the perpetual is not in the mapping, so the
+    caller can decide to skip a symbol-specific read instead of inventing one.
+    """
+    symbol = (stock_perp or "").strip().upper()
+    for rtoken, perp in RTOKEN_TO_STOCK_PERP.items():
+        if perp == symbol:
+            return rtoken
+    return ""
+
+
+def stock_code_for(rtoken_symbol: str) -> str:
+    """The underlying equity code for an rToken symbol (RNVDAUSDT -> NVDA)."""
+    symbol = (rtoken_symbol or "").strip().upper()
+    if symbol.endswith("USDT"):
+        symbol = symbol[: -len("USDT")]
+    if symbol.startswith("R"):
+        symbol = symbol[1:]
+    return symbol
+
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
