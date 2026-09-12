@@ -8,6 +8,8 @@ and returns 404 when the header is present.
 from __future__ import annotations
 
 import json
+import socket
+import struct
 import time
 import urllib.error
 import urllib.parse
@@ -15,6 +17,51 @@ import urllib.request
 from typing import Any
 
 from .config import BITGET_REST, USER_AGENT
+
+
+def _fallback_dns(domain: str, dns_server: str = "8.8.8.8") -> str | None:
+    try:
+        packet = b"\xaa\xbb\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00"
+        for part in domain.split("."):
+            packet += struct.pack("B", len(part)) + part.encode()
+        packet += b"\x00\x00\x01\x00\x01"
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(3.0)
+        sock.sendto(packet, (dns_server, 53))
+        data, _ = sock.recvfrom(1024)
+        idx = len(packet)
+        while idx < len(data):
+            if data[idx] >= 192:
+                idx += 2
+            else:
+                while idx < len(data) and data[idx] != 0:
+                    idx += data[idx] + 1
+                idx += 1
+            if idx + 10 <= len(data):
+                rtype, _, _, rdlength = struct.unpack(">HHIH", data[idx:idx + 10])
+                idx += 10
+                if rtype == 1 and rdlength == 4:
+                    return socket.inet_ntoa(data[idx:idx + 4])
+                idx += rdlength
+    except Exception:
+        pass
+    return None
+
+
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    try:
+        return _orig_getaddrinfo(host, port, family, type, proto, flags)
+    except socket.gaierror:
+        ip = _fallback_dns(host)
+        if ip:
+            return _orig_getaddrinfo(ip, port, family, type, proto, flags)
+        raise
+
+
+socket.getaddrinfo = _patched_getaddrinfo
 
 
 class BitgetDataError(RuntimeError):

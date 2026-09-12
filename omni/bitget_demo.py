@@ -61,6 +61,11 @@ class DemoClient:
             env["BITGET_SECRET_KEY"] = self.config.secret_key
         if self.config.passphrase:
             env["BITGET_PASSPHRASE"] = self.config.passphrase
+        from .config import ROOT
+        dns_fix = ROOT / "dns-fix.js"
+        if dns_fix.exists():
+            existing = env.get("NODE_OPTIONS", "")
+            env["NODE_OPTIONS"] = f"--require \"{dns_fix.as_posix()}\" {existing}".strip()
         return env
 
     def call(self, args: list, timeout: int = 60, allow_failure: bool = False) -> CliResult:
@@ -69,8 +74,11 @@ class DemoClient:
             argv,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             env=self._subprocess_env(),
+            shell=(os.name == "nt"),
         )
         stdout, stderr, code = proc.stdout.strip(), proc.stderr.strip(), proc.returncode
 

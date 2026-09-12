@@ -100,10 +100,16 @@ chmod 600 .env
 # 3. verify every live dependency
 python3 -m omni.cli doctor
 
-# 4. run the full demo (event -> decision -> execution)
+# 4. launch Floor-style Visual Cockpit UI (http://localhost:8080)
+python3 -m omni.cli ui --port 8080
+
+# 5. run 24/7 autonomous governor daemon
+python3 -m omni.cli daemon --interval 60 --execute
+
+# 6. run the scripted judge-facing run
 ./demo/run_demo.sh
 
-# 5. read the paper metrics
+# 7. read the paper metrics
 python3 -m omni.cli report
 ```
 
@@ -113,6 +119,7 @@ Or step through it manually:
 python3 -m omni.cli status
 python3 -m omni.cli setup --setup-symbol BTCUSDT --setup-qty 2   # demo book
 python3 -m omni.cli demo --rtoken-shock -0.08 --crypto-shock -0.25
+python3 -m omni.cli ui --port 8080                              # open visual cockpit
 python3 -m omni.cli flatten
 python3 -m omni.cli report
 python3 -m unittest discover -s tests
@@ -193,7 +200,9 @@ omni/
   executor.py       dry run, execution, venue size-limit adaptation, readback
   ledger.py         JSONL evidence ledger
   metrics.py        paper metrics computed from the ledger
-  cli.py            doctor, status, decide, demo, setup, flatten, report
+  daemon.py         24/7 continuous autonomous risk governance daemon
+  web.py            Floor-style live visual cockpit server (zero external web deps)
+  cli.py            doctor, status, decide, demo, setup, flatten, report, daemon, ui
 demo/
   run_demo.sh            the full end-to-end sequence
   portfolio.example.json large declared rToken book

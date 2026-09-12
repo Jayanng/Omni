@@ -415,6 +415,30 @@ def cmd_demo(args) -> int:
     return run_cycle(True, args)
 
 
+def cmd_daemon(args) -> int:
+    from .daemon import DaemonConfig, OmniDaemon
+    d_cfg = DaemonConfig(
+        interval=args.interval,
+        execute=args.execute,
+        max_iterations=args.max_iterations,
+        portfolio_path=Path(args.portfolio) if args.portfolio else DEFAULT_PORTFOLIO,
+        rtoken=args.rtoken,
+        haircut=args.haircut,
+        haircut_source=args.haircut_source,
+        rtoken_shock=args.rtoken_shock,
+        crypto_shock=args.crypto_shock,
+        max_hedge_notional=args.max_hedge_notional,
+    )
+    OmniDaemon(d_cfg).start()
+    return 0
+
+
+def cmd_ui(args) -> int:
+    from .web import serve_ui
+    serve_ui(port=args.port)
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # flatten and report
 # ---------------------------------------------------------------------------
@@ -535,6 +559,18 @@ def build_parser() -> argparse.ArgumentParser:
                    parents=[common]).set_defaults(func=cmd_flatten)
     sub.add_parser("report", help="paper metrics from the ledger",
                    parents=[common]).set_defaults(func=cmd_report)
+
+    daemon = sub.add_parser("daemon", help="24/7 continuous autonomous governor loop",
+                            parents=[common])
+    daemon.add_argument("--interval", type=int, default=60, help="cycle interval in seconds (default: 60)")
+    daemon.add_argument("--execute", action="store_true", help="enable autonomous paper order execution")
+    daemon.add_argument("--max-iterations", type=int, default=None, help="stop after N cycles")
+    daemon.set_defaults(func=cmd_daemon)
+
+    ui = sub.add_parser("ui", help="launch Floor-style live visual cockpit",
+                        parents=[common])
+    ui.add_argument("--port", type=int, default=8080, help="port to listen on (default: 8080)")
+    ui.set_defaults(func=cmd_ui)
     return parser
 
 
