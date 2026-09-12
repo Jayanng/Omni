@@ -25,6 +25,7 @@ from .collateral import RTokenPosition
 from .config import ROOT, load_config, stock_perp_for
 from .executor import execute
 from .ledger import Ledger
+from .venue_risk import query_haircut
 from .policy import PolicyConfig, validate
 from .risk import FuturesPosition, evaluate, shock_for
 from .session import classify
@@ -314,18 +315,34 @@ def run_cycle(execute_action: bool, args) -> int:
                        avg_price=float(r.get("avg_price", 0.0)))
         for r in portfolio.get("rtoken_positions", [])
     ]
+    # Venue-sourced haircut, same rule as the daemon: query the published
+    # discount-rate schedule for the portfolio's rToken coin and fall back to
+    # the explicit --haircut input when the venue read fails. The source of the
+    # value actually used is printed and recorded.
+    rtoken_holding_value = sum(
+        p.qty * marks.get(p.symbol, p.avg_price or 0.0) for p in rtoken_positions
+    )
+    haircut_pct = args.haircut
+    haircut_source = args.haircut_source or "explicit --haircut input"
+    quote = query_haircut(client, args.rtoken, rtoken_holding_value)
+    if quote is not None:
+        haircut_pct = quote.haircut_pct
+        haircut_source = quote.source
+
     risk = evaluate(
         as_of=_now(),
         observed_effective_equity=eff_equity,
         rtoken_positions=rtoken_positions,
         rtoken_marks=marks,
         futures_positions=futures,
-        haircut_pct=args.haircut,
+        haircut_pct=haircut_pct,
         rtoken_shock_pct=args.rtoken_shock,
         crypto_shock_pct=args.crypto_shock,
         hedge_symbol=hedge_symbol,
     )
     rd = risk.to_dict()
+    rd["modelled"]["haircut_source"] = haircut_source
+    rd["modelled"]["haircut_input"] = args.haircut
 
     # Simulated cost of exiting the rToken leg into the stressed book. Bitget's
     # demo service does not execute RWA orders, so this is marked simulated and
@@ -343,7 +360,8 @@ def run_cycle(execute_action: bool, args) -> int:
         rd["results"]["simulated_rtoken_exits"] = simulated_exits
 
     print(f"  modelled rToken gross        : {rd['modelled']['rtoken_gross_value']:,.2f} USDT")
-    print(f"  haircut applied              : {args.haircut:.1%}")
+    print(f"  haircut applied              : {haircut_pct:.1%}")
+    print(f"  haircut source               : {haircut_source}")
     print(f"  effective collateral         : {rd['modelled']['rtoken_effective_collateral']:,.2f} USDT")
     print(f"  scenario rToken / crypto     : {args.rtoken_shock:+.1%} / {args.crypto_shock:+.1%}")
     print(f"  shocked buffer               : {rd['results']['shocked_buffer_usdt']:,.2f} USDT")
@@ -354,9 +372,6 @@ def run_cycle(execute_action: bool, args) -> int:
               f"{exit_fill['symbol']} {exit_fill['filled_qty']:g} @ {exit_fill['vwap']:,.2f} "
               f"slippage {exit_fill['slippage_bps']:.1f} bps, fee {exit_fill['fee']:.2f} USDT")
     ledger.record("risk_state", rd)
-
-    if args.haircut_source:
-        print(f"  haircut source               : {args.haircut_source}")
 
     _print("5. agent decision (LLM is the decision maker)")
     decision = llm_mod.decide(

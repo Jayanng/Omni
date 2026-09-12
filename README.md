@@ -209,6 +209,7 @@ demo/
   portfolio.small.json   right sized book
 tests/
   test_engine.py         36 stdlib unit tests
+  test_venue_risk.py      9 stdlib unit tests (venue parameter lookups)
 tools/
   review_scan.py         unused import, long line and tab scan
   llm_latency_probe.py   measures model latency and fallback rate in isolation
@@ -227,8 +228,9 @@ evidence/
 ## Honest boundaries
 
 - The risk engine is a **scenario model**, not Bitget's official margin or liquidation engine.
-- The rToken collateral ratio (haircut) is an **explicit input**, because Bitget does not
-  publish an account-specific ratio through the Agent Hub surface.
+  Maintenance-margin inputs are venue-sourced from the published position-tier ladder, and the
+  rToken haircut is queried live from the venue's discount-rate schedule (5% for rNVDA at the demo
+  tier) with the explicit `--haircut` flag as a documented fallback.
 - Bitget's demo service **does not support rToken (RWA) order execution**. rToken positions are
   therefore valued from live production data with fills simulated against the real order book,
   and every such fill is labelled `simulated`. Execution is real paper execution on the futures

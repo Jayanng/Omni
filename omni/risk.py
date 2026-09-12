@@ -25,8 +25,9 @@ DISCLAIMER = (
 )
 
 ASSUMPTIONS = (
-    "rToken collateral ratio (haircut) is an explicit input because Bitget does not "
-    "publish an account-specific ratio through the Agent Hub surface",
+    "rToken collateral ratio (haircut) is queried from the venue's published "
+    "discount-rate schedule when available; the explicit --haircut input is a "
+    "documented fallback, and the ledger records which was used",
     "crypto shock is applied to both futures PnL and futures notional",
     "rToken shock is applied to the modelled collateral mark only",
     "fees, funding and further margin-mode effects are not modelled inside the shock",

@@ -77,15 +77,29 @@ def compute(log_dir: Path) -> dict:
         or policy_of(e).get("action") not in ALLOWED_ACTIONS
     ]
 
-    equity_series: list = []
+    # Equity observations from both account snapshots and daemon cycles,
+    # ordered by timestamp so the return series is a real time series.
+    equity_points: list[tuple[str, float]] = []
     for snap in snapshots:
         raw = (payload(snap).get("assets") or {}).get("effEquity")
         if raw is None:
             continue
         try:
-            equity_series.append(float(raw))
+            equity_points.append((str(snap.get("ts") or ""), float(raw)))
         except (TypeError, ValueError):
             continue
+    for entry in entries:
+        if entry.get("kind") != "daemon_cycle":
+            continue
+        raw = (payload(entry).get("account") or {}).get("equity")
+        if raw is None:
+            continue
+        try:
+            equity_points.append((str(entry.get("ts") or ""), float(raw)))
+        except (TypeError, ValueError):
+            continue
+    equity_points.sort(key=lambda point: point[0])
+    equity_series = [value for _, value in equity_points]
 
     max_drawdown_pct = 0.0
     peak = None
