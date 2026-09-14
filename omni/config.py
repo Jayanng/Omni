@@ -51,12 +51,6 @@ RTOKEN_TO_STOCK_PERP = {
     "RQQQUSDT": "NDX100USDT",
 }
 
-# Documented default used only when a caller explicitly asks for one. It is NOT
-# substituted silently for an unmapped symbol: hedging the wrong instrument is
-# worse than refusing to hedge.
-DEFAULT_HEDGE_PERP = "NVDAUSDT"
-
-
 def stock_perp_for(rtoken_symbol: str) -> str:
     """Map an rToken symbol, or an already-mapped perpetual, to a perpetual symbol.
 

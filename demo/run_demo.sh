@@ -29,14 +29,13 @@ echo
 echo "########################################################################"
 echo "# 3. RUN A: large declared rToken book, policy cap engages"
 echo "########################################################################"
-python3 -m omni.cli demo --rtoken-shock -0.08 --crypto-shock -0.25
+python3 -m omni.cli demo
 
 echo
 echo "########################################################################"
 echo "# 4. RUN B: right sized book, protective hedge fills in full"
 echo "########################################################################"
-python3 -m omni.cli demo --portfolio demo/portfolio.small.json \
-  --rtoken-shock -0.08 --crypto-shock -0.25
+python3 -m omni.cli demo --portfolio demo/portfolio.small.json
 
 echo
 echo "########################################################################"

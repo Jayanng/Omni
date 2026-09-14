@@ -88,8 +88,10 @@ Each was probed live and is now queried on every cycle through
 | `GET /api/v3/market/position-tier` | `market --action positionTier` | `NVDAUSDT` returns 11 bands, `mmr` 0.005 at tier 1 rising to 0.04, leverage 100 down to 15 | the official maintenance-margin ladder, and which tier a new hedge would graduate into |
 | `GET /api/v3/account/max-open-available` | `order --action maxOpen` | for `NVDAUSDT` sell with an existing short: `maxSellOpen 0.15`, `maxBuyOpen 45.73`, `available 93863.40` | the pre-trade size clamp: the venue's own answer for additional size, folding in tiers, margin and open positions |
 
-Behaviour when a read fails: the explicit input is used and the ledger records
-the fallback source. No value is invented.
+Behaviour when a venue read fails: the cycle fails toward caution. An explicit
+operator override is used only when deliberately supplied and is recorded as
+unverified; otherwise collateral is treated as unusable and the cycle does not
+silently substitute a market value.
 
 ### Why this matters
 

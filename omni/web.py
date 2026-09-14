@@ -95,12 +95,13 @@ def _status_refresh_worker():
             # config mapping. No symbol is invented: if none resolves, the
             # symbol-specific reads are skipped and the payload reports nulls,
             # which the UI renders as em dashes.
-            from .config import (
-                DEFAULT_HEDGE_PERP,
-                RTOKEN_TO_STOCK_PERP,
-                rtoken_for_stock_perp,
-                stock_code_for,
-            )
+            from .config import RTOKEN_TO_STOCK_PERP, stock_code_for
+            portfolio = {}
+            portfolio_path = DEFAULT_PORTFOLIO
+            if portfolio_path.exists():
+                portfolio = json.loads(portfolio_path.read_text(encoding="utf-8"))
+            declared = portfolio.get("rtoken_positions") or []
+            declared_symbols = [str(r.get("symbol", "")).upper() for r in declared if r.get("symbol")]
             positions_raw = client.positions()
             rtoken_sym = ""
             for p in (positions_raw if isinstance(positions_raw, list) else []):
@@ -109,7 +110,10 @@ def _status_refresh_worker():
                     rtoken_sym = sym
                     break
             if not rtoken_sym:
-                rtoken_sym = rtoken_for_stock_perp(DEFAULT_HEDGE_PERP)
+                for sym in declared_symbols:
+                    if sym in RTOKEN_TO_STOCK_PERP:
+                        rtoken_sym = sym
+                        break
 
             with ThreadPoolExecutor(max_workers=6) as ex:
                 f_states = ex.submit(bp.market_states)
@@ -140,6 +144,12 @@ def _status_refresh_worker():
                     if latest_rationale:
                         break
 
+            raw_margin_ratio = assets.get("mgnRatio")
+            try:
+                margin_ratio = float(raw_margin_ratio) if raw_margin_ratio is not None else None
+            except (TypeError, ValueError):
+                margin_ratio = None
+
             payload = {
                 "ok": True,
                 "session": session.to_dict(),
@@ -147,7 +157,7 @@ def _status_refresh_worker():
                 "rtoken_price": tick.get("lastPrice"),
                 "equity": assets.get("effEquity"),
                 "mmr": assets.get("mmr"),
-                "margin_ratio": float(assets.get("mgnRatio") or 0.0),
+                "margin_ratio": margin_ratio,
                 "positions": pos if isinstance(pos, list) else [],
                 "latest_rationale": latest_rationale or "Autonomous Governor active.",
                 "cached_at": time.time(),
@@ -244,9 +254,12 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/config":
+            from .config import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, RTOKEN_FEE_RATE, RTOKEN_TO_STOCK_PERP
             from .policy import PolicyConfig
-            from .config import ALLOWED_ACTIONS, FORBIDDEN_ACTIONS, RTOKEN_FEE_RATE, DEFAULT_HEDGE_PERP
-            pol = PolicyConfig()
+            cfg = load_config()
+            pol = PolicyConfig(
+                max_order_notional_usdt=cfg.policy_max_hedge_notional_usdt,
+            )
             self._send_json({
                 "ok": True,
                 "max_order_notional_usdt": pol.max_order_notional_usdt,
@@ -256,7 +269,7 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
                 "allowed_actions": list(ALLOWED_ACTIONS),
                 "forbidden_actions": list(FORBIDDEN_ACTIONS),
                 "rtoken_fee_rate": RTOKEN_FEE_RATE,
-                "default_hedge_perp": DEFAULT_HEDGE_PERP,
+                "mapped_stock_perps": sorted(set(RTOKEN_TO_STOCK_PERP.values())),
             })
             return
 
@@ -299,14 +312,12 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
             params = {}
 
         if parsed.path == "/api/cycle":
-            rtoken_shock = float(params.get("rtoken_shock", -0.25))
             execute_flag = bool(params.get("execute", False))
 
             try:
                 d_cfg = DaemonConfig(
                     execute=execute_flag,
                     portfolio_path=DEFAULT_PORTFOLIO,
-                    rtoken_shock=rtoken_shock,
                 )
                 daemon = OmniDaemon(d_cfg)
                 cycle_result = daemon.run_one_cycle()
@@ -314,7 +325,7 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
                 now_str = datetime.now(tz=timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
                 dec = cycle_result.get("decision") or {}
                 GLOBAL_TERMINAL_LOGS.append(
-                    f"[{now_str}] $ omni decide --execute (shock={rtoken_shock:+.0%}) -> "
+                    f"[{now_str}] $ omni decide --execute (live-derived shocks) -> "
                     f"Decision: {dec.get('action', 'HOLD')} | "
                     f"Executed: {cycle_result.get('execution', {}).get('executed')}"
                 )
@@ -355,8 +366,7 @@ class OmniHttpHandler(http.server.BaseHTTPRequestHandler):
             if action == "start":
                 interval = int(params.get("interval", 30))
                 execute = bool(params.get("execute", False))
-                shock = float(params.get("shock", -0.25))
-                res = GLOBAL_DAEMON.start(interval=interval, execute=execute, shock=shock)
+                res = GLOBAL_DAEMON.start(interval=interval, execute=execute)
             elif action == "stop":
                 res = GLOBAL_DAEMON.stop()
             else:

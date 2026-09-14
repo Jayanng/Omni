@@ -11,12 +11,10 @@ window.__OMNI_PAGES["/controls"] = {
             Runs one full observe \u2192 model \u2192 decide \u2192 policy \u2192 execute cycle against the live demo account.
             Dry run by default; check the box to send paper orders.
           </p>
-          <div class="shock-picker" style="margin-bottom:12px">
-            <button class="shock-btn" data-shock="-0.04">-4%</button>
-            <button class="shock-btn active" data-shock="-0.08">-8%</button>
-            <button class="shock-btn" data-shock="-0.15">-15%</button>
-            <button class="shock-btn" data-shock="-0.25">-25%</button>
-          </div>
+          <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
+            Scenario shocks are derived from the stressed instruments' live candle history on each cycle.
+            No manual market shock is injected here.
+          </p>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;color:var(--muted)">
             <input type="checkbox" id="execFlag"><label for="execFlag">execute paper orders</label>
           </div>
@@ -62,11 +60,8 @@ window.__OMNI_PAGES["/controls"] = {
   },
   mount() {
     const { $, state, api, refreshStatus, refreshLedger, refreshDaemon } = OMNI;
-    let shock = -0.08;
-    document.querySelectorAll(".shock-btn").forEach(b => b.addEventListener("click", () => {
-      document.querySelectorAll(".shock-btn").forEach(x => x.classList.remove("active"));
-      b.classList.add("active"); shock = parseFloat(b.dataset.shock);
-    }));
+    // Shocks are derived by the live scenario engine; the UI does not inject
+    // hardcoded market moves into a governance cycle.
     $("execFlag").addEventListener("change", () => { $("execWarn").style.display = $("execFlag").checked ? "block" : "none"; });
 
     function renderDaemon() {
@@ -89,7 +84,7 @@ window.__OMNI_PAGES["/controls"] = {
         ["allowed actions", (cfg.allowed_actions || []).length],
         ["forbidden actions", (cfg.forbidden_actions || []).length],
         ["rToken fee rate", cfg.rtoken_fee_rate != null ? (cfg.rtoken_fee_rate * 100).toFixed(2) + "%" : "\u2014"],
-        ["hedge perp default", cfg.default_hedge_perp || "\u2014"],
+        ["mapped hedge perps", (cfg.mapped_stock_perps || []).length],
       ];
       el.innerHTML = items.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span class="v num">${v}</span></div>`).join("");
     }).catch(() => { $("policyFacts").innerHTML = `<div class="empty">config unavailable</div>`; });
@@ -97,7 +92,7 @@ window.__OMNI_PAGES["/controls"] = {
     $("btnCycle").addEventListener("click", async () => {
       const btn = $("btnCycle"); btn.disabled = true; btn.textContent = "cycle running\u2026";
       try {
-        const d = await api("/api/cycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rtoken_shock: shock, execute: $("execFlag").checked }) });
+        const d = await api("/api/cycle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ execute: $("execFlag").checked }) });
         $("cycleOut").style.display = "block";
         if (d.ok) {
           const res = d.result || {}, dec = res.decision || {}, pol = res.policy || {}, ex = res.execution || {};
@@ -115,7 +110,7 @@ window.__OMNI_PAGES["/controls"] = {
     $("btnDaemon").addEventListener("click", async () => {
       const st = await api("/api/action/daemon");
       const action = st.running ? "stop" : "start";
-      await api("/api/action/daemon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, interval: 60, execute: $("execFlag").checked, shock }) });
+      await api("/api/action/daemon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, interval: 60, execute: $("execFlag").checked }) });
       refreshDaemon();
     });
     $("btnSetup").addEventListener("click", async () => {

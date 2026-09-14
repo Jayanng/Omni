@@ -17,8 +17,8 @@ Replaces modelled values with the exchange's own published schedules:
   size limits are queried, not discovered by rejection.
 
 Every value carries its source string so the ledger records provenance. If a
-venue read fails, callers fall back to their explicit inputs and the source
-string says so. Nothing is silently invented.
+venue read fails, callers fail toward caution or use an explicit operator
+override marked unverified. Nothing is silently invented.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def query_haircut(client: DemoClient, coin: str, holding_value_usdt: float) -> H
     """Venue haircut for ``coin`` at the given holding value, from discount-rate.
 
     Returns None when the coin is not listed or the call fails; the caller
-    falls back to its explicit input haircut and records that.
+    must fail toward caution or use an explicitly supplied operator override.
     """
     try:
         result = client.call(

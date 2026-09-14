@@ -125,8 +125,7 @@ button.danger{border-color:rgba(255,176,32,.5);color:var(--risk)}
          color:var(--risk);font-size:12px;letter-spacing:.1em;text-transform:uppercase}
 .verdict.ok{border-color:rgba(63,185,80,.4);color:var(--safe)}
 .shock-picker{display:flex;gap:8px;margin-top:10px}
-.shock-btn{width:auto;flex:1;padding:6px 0;font-size:12px}
-.shock-btn.active{border-color:var(--info);color:var(--info);background:#12202f}
+.shock-btn{display:none}
 
 /* ---------- decision ---------- */
 .decision{border:1px solid var(--rule);background:var(--panel);padding:16px 18px}
@@ -232,11 +231,7 @@ button.danger{border-color:rgba(255,176,32,.5);color:var(--risk)}
         <h2>governance</h2>
         <div class="cmd-grid">
           <button class="primary" id="btnCycle">run governance cycle</button>
-          <div class="shock-picker">
-            <button class="shock-btn" data-shock="-0.04">-4%</button>
-            <button class="shock-btn active" data-shock="-0.08">-8%</button>
-            <button class="shock-btn" data-shock="-0.25">-25%</button>
-          </div>
+          <div class="muted" style="font-size:12px;margin-top:10px">Scenario shocks are derived from live candle history on each cycle.</div>
           <div class="exec-toggle">
             <input type="checkbox" id="execFlag">
             <label for="execFlag">execute paper orders</label>
@@ -341,7 +336,6 @@ button.danger{border-color:rgba(255,176,32,.5);color:var(--risk)}
 const $ = id => document.getElementById(id);
 const fmt = (v,d=2) => v==null ? "—" : Number(v).toLocaleString("en-US",{minimumFractionDigits:d,maximumFractionDigits:d});
 const fmtPct = v => v==null ? "—" : (v*100).toFixed(2)+"%";
-let currentShock = -0.08;
 let ledgerCache = [];
 
 /* ---------- clocks ---------- */
@@ -536,13 +530,7 @@ function renderStream(){
 setInterval(pollLedger,15000); pollLedger();
 
 /* ---------- shock picker ---------- */
-document.querySelectorAll(".shock-btn").forEach(btn=>{
-  btn.addEventListener("click",()=>{
-    document.querySelectorAll(".shock-btn").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    currentShock = parseFloat(btn.dataset.shock);
-  });
-});
+
 
 /* ---------- run cycle ---------- */
 $("execFlag").addEventListener("change",()=>{
@@ -554,7 +542,7 @@ $("btnCycle").addEventListener("click",async()=>{
   try{
     const r = await fetch("/api/cycle",{
       method:"POST",headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({rtoken_shock:currentShock, execute:$("execFlag").checked})
+      body: JSON.stringify({execute:$("execFlag").checked})
     });
     const d = await r.json();
     if(d.ok){
@@ -600,7 +588,7 @@ $("btnDaemon").addEventListener("click",async()=>{
   const action = st.running?"stop":"start";
   await fetch("/api/action/daemon",{
     method:"POST",headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({action, interval:60, execute:$("execFlag").checked, shock:currentShock})
+    body: JSON.stringify({action, interval:60, execute:$("execFlag").checked})
   });
   refreshDaemon();
 });

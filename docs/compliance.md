@@ -67,7 +67,7 @@ stated here rather than hidden.
 |---|---|
 | Paper trading Sharpe | **Not reported yet.** Fewer than 20 equity observations. The metric withholds the number and says why instead of publishing a meaningless one. |
 | Max drawdown | Computed from the recorded paper equity series. |
-| Win rate | Reported as `protective_action_share`, the share of decisions that resulted in an executed protective action. A defensive governor holds most of the time, so a low trade count is expected and stated. |
+| Win rate | **Not reported as win rate.** `protective_action_share` is an activity/risk-response metric, not trade profitability or a win rate. Track 2 asks for win rate; Omni must label this unavailable rather than relabel activity as success. |
 | Decision explainability | Every decision is recorded with the model, latency, token usage, raw response, rationale and confidence, and with the policy verdict and every veto. |
 | Agent architecture quality | [architecture.md](architecture.md): perception, deterministic model, model decision, policy control, execution, evidence. |
 | Risk control layer effectiveness | Allowlist, hard vetoes, size caps, forced minimum protection, dry-run gates, no transfer path. Unit tested. |

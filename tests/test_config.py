@@ -6,7 +6,6 @@ import unittest
 
 from omni.config import (
     ALLOWED_ACTIONS,
-    DEFAULT_HEDGE_PERP,
     RTOKEN_TO_STOCK_PERP,
     mapped_stock_perps,
     rtoken_for_stock_perp,
@@ -36,7 +35,7 @@ class TestSymbolMapping(unittest.TestCase):
         self.assertIsInstance(perps, tuple)
         self.assertEqual(set(perps), set(RTOKEN_TO_STOCK_PERP.values()))
         self.assertEqual(list(perps), sorted(perps), "must be deterministic order")
-        self.assertIn(DEFAULT_HEDGE_PERP, perps)
+        self.assertIn("NVDAUSDT", perps)
 
     def test_rtoken_for_stock_perp_reverse_lookup(self):
         self.assertEqual(rtoken_for_stock_perp("NVDAUSDT"), "RNVDAUSDT")

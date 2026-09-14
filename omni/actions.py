@@ -455,21 +455,21 @@ class WebDaemonManager:
         with self._lock:
             return self._thread is not None and self._thread.is_alive()
 
-    def start(self, interval: int = 60, execute: bool = False, shock: float | None = None) -> dict[str, Any]:
+    def start(self, interval: int = 60, execute: bool = False) -> dict[str, Any]:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return {"ok": True, "running": True, "message": "Daemon is already running"}
 
             self.interval = max(10, interval)
             self.execute = execute
-            self.shock = shock
+            self.shock = None
             self._stop_event.clear()
             self._thread = threading.Thread(target=self._run_loop, daemon=True, name="OmniDaemonWorker")
             self._thread.start()
 
             msg = (
                 f"[{_now()}] [DAEMON] Started 24/7 Autonomous Governor loop "
-                f"(interval={self.interval}s, execute={self.execute}, shock={self.shock})"
+                f"(interval={self.interval}s, execute={self.execute}, shocks=live-derived)"
             )
             GLOBAL_TERMINAL_LOGS.append(msg)
             return {"ok": True, "running": True, "interval": self.interval}
@@ -515,7 +515,6 @@ class WebDaemonManager:
                     interval=self.interval,
                     execute=self.execute,
                     portfolio_path=DEFAULT_PORTFOLIO,
-                    rtoken_shock=self.shock,
                 )
                 daemon = OmniDaemon(d_cfg)
                 res = daemon.run_one_cycle()

@@ -167,8 +167,13 @@ def cmd_doctor(args) -> int:
             print(f"  [FAIL] account overview: {str(exc)[:120]}")
 
         try:
+            # Probe a live stock perpetual derived from the venue universe,
+            # never a hardcoded symbol that may not exist in the current demo.
+            probe_symbol = next(iter(sorted(_stock_perp_symbols(client))), "")
+            if not probe_symbol:
+                raise RuntimeError("no stock perpetual returned by the venue")
             preview = client.place_order(
-                "USDT-FUTURES", "NVDAUSDT", "sell", "market", "0.05",
+                "USDT-FUTURES", probe_symbol, "sell", "market", "0.05",
                 pos_side="short", reduce_only="no", dry_run=True,
             )
             ok = bool(preview.ok)
@@ -183,11 +188,16 @@ def cmd_doctor(args) -> int:
 
     _print("session classifier")
     try:
-        state = classify(bp.market_states(), (bp.stock_info("RNVDAUSDT") or [{}])[0],
-                         bp.market_calendar("NVDA"))
+        if not rtoken_symbol or not stock_code:
+            raise RuntimeError("no live rToken and underlying code resolved for session check")
+        state = classify(
+            bp.market_states(),
+            (bp.stock_info(rtoken_symbol) or [{}])[0],
+            bp.market_calendar(stock_code),
+        )
         checks.append(("session classify", True, state.regime))
         print(f"  [PASS] regime={state.regime} liquidity={state.liquidity_tier} "
-              f"mark_confidence={state.mark_confidence}")
+              f"mark_confidence={state.mark_confidence} symbol={rtoken_symbol}")
     except Exception as exc:  # noqa: BLE001
         checks.append(("session classify", False, str(exc)[:120]))
         print(f"  [FAIL] {str(exc)[:120]}")
@@ -277,7 +287,7 @@ def run_cycle(execute_action: bool, args) -> int:
     )
     if not code:
         raise RuntimeError(
-            f"cannot determine the underlying stock code for {args.rtoken}; "
+            f"cannot determine the underlying stock code for {resolved_rtoken}; "
             "set 'code' in the declared portfolio"
         )
     session = classify(bp.market_states(), stock, bp.market_calendar(code))
