@@ -26,8 +26,8 @@ DISCLAIMER = (
 
 ASSUMPTIONS = (
     "rToken collateral ratio (haircut) is queried from the venue's published "
-    "discount-rate schedule when available; the explicit --haircut input is a "
-    "documented fallback, and the ledger records which was used",
+    "discount-rate schedule; an explicit --haircut input is an operator override "
+    "only, and the ledger records which was used.",
     "crypto shock is applied to both futures PnL and futures notional",
     "rToken shock is applied to the modelled collateral mark only",
     "fees, funding and further margin-mode effects are not modelled inside the shock",

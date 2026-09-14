@@ -497,7 +497,7 @@ class WebDaemonManager:
                 "running": running,
                 "interval": self.interval,
                 "execute": self.execute,
-                "shock": self.shock,
+                "shocks": "live-derived",
                 "cycles_completed": self.cycles_completed,
                 "last_cycle_time": self.last_cycle_time,
                 "last_action": self.last_action,

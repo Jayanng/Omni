@@ -1,15 +1,13 @@
 """Live Visual Cockpit Web UI for Omni.
 
-Crafted with the exact visual design language and architectural taste of Floor (usefloor.vercel.app):
-- Deep obsidian pitch-black palette (#080808) with subtle radial glows and 1px borders
-- Hero spotlight blur, top laser hairline, two-tone display typography
-- Embedded dashboard frame with mini sidebar, glowing SVG sparklines, and session countdown
+Live operator console for Omni's Bitget risk governor:
+- Warm editorial palette, serif headings and evidence-oriented data views
 - Real-time polling against Bitget UTA v3 demo account and production reality feeds
 - Multi-threaded HTTP server with OPTIONS CORS support
-- Interactive shock stress-testing directly triggering real agent decision cycles
+- Live scenario evaluation directly triggering real agent decision cycles
 - Toast notification system and immediate visual feedback on all buttons
 - Live cryptographic evidence ledger table reading from day-scoped JSONL logs
-- 1:1 Parity Sentinel Command Deck & Live Terminal Console for every CLI command:
+- CLI-parity controls and live terminal console for every CLI command:
     omni doctor, omni setup, omni decide, omni flatten, omni report, omni daemon
 """
 
